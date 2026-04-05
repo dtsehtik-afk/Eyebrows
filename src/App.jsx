@@ -191,12 +191,16 @@ export default function EyebrowAgent() {
         await new Promise(r => setTimeout(r, 3000));
         const pollRes = await fetch(`/api/poll?request_id=${request_id}`);
         const pd = await pollRes.json();
-        if (pd.status === "COMPLETED" && pd.output?.image?.url) {
-          setResultImage(pd.output.image.url);
+        console.log("Poll response:", JSON.stringify(pd));
+        if (pd.error) throw new Error(pd.error);
+        const imageUrl = pd.output?.image?.url
+          || pd.output?.images?.[0]?.url
+          || pd.output?.image_url;
+        if ((pd.status === "COMPLETED" || pd.status === "completed") && imageUrl) {
+          setResultImage(imageUrl);
           setStep(STEPS.RESULT);
           return;
         }
-        if (pd.error) throw new Error(pd.error);
       }
       throw new Error("Generation timed out");
     } catch (err) {
