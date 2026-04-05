@@ -5,11 +5,26 @@ export default async function handler(req) {
     return new Response("Method not allowed", { status: 405 });
   }
 
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: "GEMINI_API_KEY is not set" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const { imageBase64, lang } = await req.json();
 
+    if (!imageBase64) {
+      return new Response(JSON.stringify({ error: "No image provided" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -23,9 +38,9 @@ export default async function handler(req) {
                 }
               },
               {
-                text: `You are an expert eyebrow designer. Analyze this face and return ONLY valid JSON, no extra text:
+                text: `You are an expert eyebrow designer. Analyze this face and return ONLY valid JSON, no extra text, no markdown:
 {
-  "faceShape": "oval|round|square|heart|long",
+  "faceShape": "oval",
   "faceShapeHebrew": "שם בעברית",
   "faceShapeEnglish": "name in English",
   "recommendedStyle": "style name",
@@ -47,8 +62,23 @@ export default async function handler(req) {
       }
     );
 
-    const data = await response.json();
-    const text = data.candidates[0].content.parts[0].text;
+    const geminiData = await response.json();
+
+    if (!response.ok) {
+      return new Response(JSON.stringify({ error: `Gemini API error: ${JSON.stringify(geminiData)}` }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!geminiData.candidates || geminiData.candidates.length === 0) {
+      return new Response(JSON.stringify({ error: `No candidates from Gemini: ${JSON.stringify(geminiData)}` }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const text = geminiData.candidates[0].content.parts[0].text;
     const clean = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(clean);
 

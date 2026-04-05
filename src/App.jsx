@@ -163,8 +163,9 @@ export default function EyebrowAgent() {
       if (data.error) throw new Error(data.error);
       setRecommendation(data);
       setStep(STEPS.RECOMMENDATION);
-    } catch {
-      setError(t.errorAnalyze);
+    } catch (err) {
+      console.error("Analyze error:", err);
+      setError(err.message || t.errorAnalyze);
       setStep(STEPS.UPLOAD);
     }
   };
