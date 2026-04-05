@@ -154,42 +154,14 @@ export default function EyebrowAgent() {
     setStep(STEPS.ANALYZING);
     setError(null);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } },
-              {
-                type: "text",
-                text: `You are an expert eyebrow designer. Analyze this face image and return ONLY valid JSON, no extra text:
-{
-  "faceShape": "oval|round|square|heart|long",
-  "faceShapeHebrew": "שם צורת הפנים בעברית",
-  "faceShapeEnglish": "face shape in English",
-  "recommendedStyle": "style name (English)",
-  "recommendedStyleDesc_he": "תיאור מפורט בעברית של הסגנון המומלץ ולמה הוא מתאים לצורת הפנים",
-  "recommendedStyleDesc_en": "detailed English description of the recommended style and why it fits this face",
-  "technique_he": "מיקרובליידינג|שיטת השערה|הצללה|עיצוב טבעי",
-  "technique_en": "Microblading|Hair Stroke|Shading|Natural Design",
-  "colorRecommendation_he": "המלצת גוון בעברית",
-  "colorRecommendation_en": "color shade recommendation in English",
-  "tips_he": ["טיפ 1", "טיפ 2", "טיפ 3"],
-  "tips_en": ["tip 1", "tip 2", "tip 3"],
-  "imagePrompt": "Detailed English prompt for AI image generation describing ideal eyebrow shape arch thickness and style for this specific face"
-}`
-              }
-            ]
-          }]
-        }),
+        body: JSON.stringify({ imageBase64, lang }),
       });
       const data = await res.json();
-      const clean = data.content[0].text.replace(/```json|```/g, "").trim();
-      setRecommendation(JSON.parse(clean));
+      if (data.error) throw new Error(data.error);
+      setRecommendation(data);
       setStep(STEPS.RECOMMENDATION);
     } catch {
       setError(t.errorAnalyze);
