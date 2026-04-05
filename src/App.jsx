@@ -96,8 +96,7 @@ export default function EyebrowAgent() {
   const [imageBase64, setImageBase64] = useState(null);
   const [recommendation, setRecommendation] = useState(null);
   const [resultImage, setResultImage] = useState(null);
-  const [falApiKey, setFalApiKey] = useState("");
-  const [showApiInput, setShowApiInput] = useState(false);
+
   const [error, setError] = useState(null);
   const fileRef = useRef();
   const videoRef = useRef();
@@ -171,36 +170,24 @@ export default function EyebrowAgent() {
   };
 
   const generateWithFal = async () => {
-    if (!falApiKey) { setShowApiInput(true); return; }
     setStep(STEPS.GENERATING);
     setError(null);
     try {
-      const submitRes = await fetch("https://queue.fal.run/fal-ai/face-to-sticker", {
+      const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Authorization": `Key ${falApiKey}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          image_url: `data:image/jpeg;base64,${imageBase64}`,
+          imageBase64,
           prompt: `${recommendation.imagePrompt}, professional microblading eyebrows result, natural beauty photography, high quality`,
-          negative_prompt: "bad eyebrows, uneven, artificial, harsh lines, cartoon",
         }),
       });
-      if (!submitRes.ok) throw new Error("fal error");
-      const { request_id } = await submitRes.json();
-      for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        const poll = await fetch(`https://queue.fal.run/fal-ai/face-to-sticker/requests/${request_id}`, {
-          headers: { "Authorization": `Key ${falApiKey}` },
-        });
-        const pd = await poll.json();
-        if (pd.status === "COMPLETED" && pd.output?.image?.url) {
-          setResultImage(pd.output.image.url);
-          setStep(STEPS.RESULT);
-          return;
-        }
-      }
-      throw new Error("timeout");
-    } catch {
-      setError(t.errorGenerate);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setResultImage(data.imageUrl);
+      setStep(STEPS.RESULT);
+    } catch (err) {
+      console.error("Generate error:", err);
+      setError(err.message || t.errorGenerate);
       setStep(STEPS.RECOMMENDATION);
     }
   };
@@ -213,7 +200,6 @@ export default function EyebrowAgent() {
     setRecommendation(null);
     setResultImage(null);
     setError(null);
-    setShowApiInput(false);
   };
 
   // progress mapping
@@ -366,15 +352,6 @@ export default function EyebrowAgent() {
                 ))}
               </div>
 
-              {/* fal.ai key */}
-              {showApiInput && (
-                <div style={{ marginBottom: "14px" }}>
-                  <p style={{ color: "#c4a0b8", fontSize: "13px", margin: "0 0 8px" }}>{t.apiLabel}</p>
-                  <input type="password" placeholder="fal_..." value={falApiKey}
-                    onChange={e => setFalApiKey(e.target.value)}
-                    style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "8px", color: "#f0d4e8", fontSize: "14px", boxSizing: "border-box", outline: "none" }} />
-                </div>
-              )}
 
               <button onClick={generateWithFal} style={btnPrimary}>{t.generateBtn}</button>
               <button onClick={() => alert(t.consultAlert)} style={btnSecondary}>{t.bookBtn}</button>
