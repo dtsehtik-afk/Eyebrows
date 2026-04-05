@@ -22,12 +22,31 @@ export default async function handler(req) {
     });
   }
 
+  const headers = { "Authorization": `Key ${apiKey}` };
+  const base = `https://queue.fal.run/fal-ai/face-to-sticker/requests/${requestId}`;
+
   try {
-    const poll = await fetch(`https://queue.fal.run/fal-ai/face-to-sticker/requests/${requestId}`, {
-      headers: { "Authorization": `Key ${apiKey}` },
-    });
-    const data = await poll.json();
-    return new Response(JSON.stringify(data), {
+    // Check status first
+    const statusRes = await fetch(`${base}/status`, { headers });
+    const statusData = await statusRes.json();
+
+    if (statusData.status !== "COMPLETED") {
+      return new Response(JSON.stringify({ status: statusData.status }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch actual result when completed
+    const resultRes = await fetch(base, { headers });
+    const result = await resultRes.json();
+
+    const imageUrl =
+      result.images?.[0]?.url ||
+      result.image?.url ||
+      result.output?.images?.[0]?.url ||
+      result.output?.image?.url;
+
+    return new Response(JSON.stringify({ status: "COMPLETED", imageUrl }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {

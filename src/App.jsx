@@ -209,13 +209,9 @@ export default function EyebrowAgent() {
         await new Promise(r => setTimeout(r, 3000));
         const pollRes = await fetch(`/api/poll?request_id=${request_id}`);
         const pd = await pollRes.json();
-        console.log("Poll response:", JSON.stringify(pd));
         if (pd.error) throw new Error(pd.error);
-        const imageUrl = pd.output?.image?.url
-          || pd.output?.images?.[0]?.url
-          || pd.output?.image_url;
-        if ((pd.status === "COMPLETED" || pd.status === "completed") && imageUrl) {
-          setResultImage(imageUrl);
+        if (pd.status === "COMPLETED" && pd.imageUrl) {
+          setResultImage(pd.imageUrl);
           setStep(STEPS.RESULT);
           return;
         }
