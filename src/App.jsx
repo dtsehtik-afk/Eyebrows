@@ -202,12 +202,13 @@ export default function EyebrowAgent() {
       });
       const submitData = await submitRes.json();
       if (submitData.error) throw new Error(submitData.error);
-      const { request_id } = submitData;
+      const { status_url, response_url } = submitData;
 
       // Poll for result — up to 5 minutes
+      const pollParams = new URLSearchParams({ status_url, response_url });
       for (let i = 0; i < 100; i++) {
         await new Promise(r => setTimeout(r, 3000));
-        const pollRes = await fetch(`/api/poll?request_id=${request_id}`);
+        const pollRes = await fetch(`/api/poll?${pollParams}`);
         const pd = await pollRes.json();
         if (pd.error) throw new Error(pd.error);
         if (pd.status === "COMPLETED") {

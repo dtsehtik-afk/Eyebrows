@@ -8,32 +8,25 @@ export default async function handler(req) {
   const apiKey = process.env.FAL_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: "FAL_API_KEY is not set" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
+      status: 500, headers: { "Content-Type": "application/json" },
     });
   }
 
   const { searchParams } = new URL(req.url);
-  const requestId = searchParams.get("request_id");
-  if (!requestId) {
-    return new Response(JSON.stringify({ error: "Missing request_id" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
+  const statusUrl = searchParams.get("status_url");
+  const responseUrl = searchParams.get("response_url");
+
+  if (!statusUrl || !responseUrl) {
+    return new Response(JSON.stringify({ error: "Missing status_url or response_url" }), {
+      status: 400, headers: { "Content-Type": "application/json" },
     });
   }
 
   const headers = { "Authorization": `Key ${apiKey}` };
-  const base = `https://queue.fal.run/fal-ai/flux/dev/image-to-image/requests/${requestId}`;
 
   try {
-    const statusRes = await fetch(`${base}/status`, { headers });
-    const statusText = await statusRes.text();
-    if (!statusText) {
-      return new Response(JSON.stringify({ error: "Empty response from fal status endpoint" }), {
-        status: 500, headers: { "Content-Type": "application/json" },
-      });
-    }
-    const statusData = JSON.parse(statusText);
+    const statusRes = await fetch(statusUrl, { headers });
+    const statusData = await statusRes.json();
 
     if (statusData.status !== "COMPLETED") {
       return new Response(JSON.stringify({ status: statusData.status || "IN_QUEUE" }), {
@@ -41,14 +34,8 @@ export default async function handler(req) {
       });
     }
 
-    const resultRes = await fetch(base, { headers });
-    const resultText = await resultRes.text();
-    if (!resultText) {
-      return new Response(JSON.stringify({ error: "Empty result from fal" }), {
-        status: 500, headers: { "Content-Type": "application/json" },
-      });
-    }
-    const result = JSON.parse(resultText);
+    const resultRes = await fetch(responseUrl, { headers });
+    const result = await resultRes.json();
 
     const imageUrl =
       result.images?.[0]?.url ||
@@ -61,8 +48,7 @@ export default async function handler(req) {
     });
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
+      status: 500, headers: { "Content-Type": "application/json" },
     });
   }
 }
