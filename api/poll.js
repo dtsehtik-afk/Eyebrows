@@ -27,16 +27,28 @@ export default async function handler(req) {
 
   try {
     const statusRes = await fetch(`${base}/status`, { headers });
-    const statusData = await statusRes.json();
+    const statusText = await statusRes.text();
+    if (!statusText) {
+      return new Response(JSON.stringify({ error: "Empty response from fal status endpoint" }), {
+        status: 500, headers: { "Content-Type": "application/json" },
+      });
+    }
+    const statusData = JSON.parse(statusText);
 
     if (statusData.status !== "COMPLETED") {
-      return new Response(JSON.stringify({ status: statusData.status }), {
+      return new Response(JSON.stringify({ status: statusData.status || "IN_QUEUE" }), {
         headers: { "Content-Type": "application/json" },
       });
     }
 
     const resultRes = await fetch(base, { headers });
-    const result = await resultRes.json();
+    const resultText = await resultRes.text();
+    if (!resultText) {
+      return new Response(JSON.stringify({ error: "Empty result from fal" }), {
+        status: 500, headers: { "Content-Type": "application/json" },
+      });
+    }
+    const result = JSON.parse(resultText);
 
     const imageUrl =
       result.images?.[0]?.url ||
