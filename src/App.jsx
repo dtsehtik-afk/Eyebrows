@@ -1,5 +1,23 @@
 import { useState, useRef, useEffect } from "react";
 
+// Resize image to max 800px and compress before sending to API
+function resizeImage(base64, maxSize = 800, quality = 0.7) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+    };
+    img.src = `data:image/jpeg;base64,${base64}`;
+  });
+}
+
 // ─── i18n ────────────────────────────────────────────────────────────────────
 const T = {
   he: {
@@ -134,7 +152,7 @@ export default function EyebrowAgent() {
     canvas.getContext("2d").drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
     setImage(dataUrl);
-    setImageBase64(dataUrl.split(",")[1]);
+    resizeImage(dataUrl.split(",")[1]).then(setImageBase64);
     stopCamera();
     setStep(STEPS.UPLOAD);
   };
@@ -144,7 +162,7 @@ export default function EyebrowAgent() {
     if (!file) return;
     setImage(URL.createObjectURL(file));
     const reader = new FileReader();
-    reader.onload = (ev) => setImageBase64(ev.target.result.split(",")[1]);
+    reader.onload = (ev) => resizeImage(ev.target.result.split(",")[1]).then(setImageBase64);
     reader.readAsDataURL(file);
   };
 
