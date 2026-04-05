@@ -26,32 +26,15 @@ export default async function handler(req) {
       }),
     });
 
+    const submitData = await submitRes.json();
     if (!submitRes.ok) {
-      const err = await submitRes.text();
-      return new Response(JSON.stringify({ error: `fal submit error: ${err}` }), {
+      return new Response(JSON.stringify({ error: `fal error: ${JSON.stringify(submitData)}` }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const { request_id } = await submitRes.json();
-
-    // Poll for result (max 40s)
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      const poll = await fetch(`https://queue.fal.run/fal-ai/face-to-sticker/requests/${request_id}`, {
-        headers: { "Authorization": `Key ${apiKey}` },
-      });
-      const pd = await poll.json();
-      if (pd.status === "COMPLETED" && pd.output?.image?.url) {
-        return new Response(JSON.stringify({ imageUrl: pd.output.image.url }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    return new Response(JSON.stringify({ error: "Generation timed out" }), {
-      status: 504,
+    return new Response(JSON.stringify({ request_id: submitData.request_id }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {

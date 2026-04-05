@@ -173,7 +173,8 @@ export default function EyebrowAgent() {
     setStep(STEPS.GENERATING);
     setError(null);
     try {
-      const res = await fetch("/api/generate", {
+      // Submit job
+      const submitRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -181,10 +182,23 @@ export default function EyebrowAgent() {
           prompt: `${recommendation.imagePrompt}, professional microblading eyebrows result, natural beauty photography, high quality`,
         }),
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResultImage(data.imageUrl);
-      setStep(STEPS.RESULT);
+      const submitData = await submitRes.json();
+      if (submitData.error) throw new Error(submitData.error);
+      const { request_id } = submitData;
+
+      // Poll for result
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pollRes = await fetch(`/api/poll?request_id=${request_id}`);
+        const pd = await pollRes.json();
+        if (pd.status === "COMPLETED" && pd.output?.image?.url) {
+          setResultImage(pd.output.image.url);
+          setStep(STEPS.RESULT);
+          return;
+        }
+        if (pd.error) throw new Error(pd.error);
+      }
+      throw new Error("Generation timed out");
     } catch (err) {
       console.error("Generate error:", err);
       setError(err.message || t.errorGenerate);
