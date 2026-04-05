@@ -20,10 +20,11 @@ export default async function handler(req) {
       headers: { "Authorization": `Key ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         image_url: `data:image/jpeg;base64,${imageBase64}`,
-        prompt: `professional portrait photo of the same person, ${prompt}, photorealistic, high quality, natural lighting`,
-        strength: 0.3,
+        prompt: `the exact same person, same age, same face, same skin tone, only the eyebrows are changed: ${prompt}, professional beauty photo, photorealistic, high resolution`,
+        negative_prompt: "old, aged, wrinkles, different person, different face, blurry, deformed",
+        strength: 0.15,
         num_inference_steps: 28,
-        guidance_scale: 3.5,
+        guidance_scale: 7,
         num_images: 1,
       }),
     });
