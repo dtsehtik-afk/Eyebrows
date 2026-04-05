@@ -197,7 +197,7 @@ export default function EyebrowAgent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageBase64,
-          prompt: `${recommendation.imagePrompt}, professional microblading eyebrows result, natural beauty photography, high quality`,
+          prompt: `perfectly shaped ${recommendation.imagePrompt}, microblading, natural brows, same person same face`,
         }),
       });
       const submitData = await submitRes.json();

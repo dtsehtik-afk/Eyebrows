@@ -16,13 +16,16 @@ export default async function handler(req) {
   try {
     const { imageBase64, prompt } = await req.json();
 
-    const submitRes = await fetch("https://queue.fal.run/fal-ai/face-to-sticker", {
+    const submitRes = await fetch("https://queue.fal.run/fal-ai/flux/dev/image-to-image", {
       method: "POST",
       headers: { "Authorization": `Key ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         image_url: `data:image/jpeg;base64,${imageBase64}`,
-        prompt,
-        negative_prompt: "bad eyebrows, uneven, artificial, harsh lines, cartoon",
+        prompt: `professional portrait photo of the same person, ${prompt}, photorealistic, high quality, natural lighting`,
+        strength: 0.3,
+        num_inference_steps: 28,
+        guidance_scale: 3.5,
+        num_images: 1,
       }),
     });
 

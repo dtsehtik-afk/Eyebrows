@@ -23,10 +23,9 @@ export default async function handler(req) {
   }
 
   const headers = { "Authorization": `Key ${apiKey}` };
-  const base = `https://queue.fal.run/fal-ai/face-to-sticker/requests/${requestId}`;
+  const base = `https://queue.fal.run/fal-ai/flux/dev/image-to-image/requests/${requestId}`;
 
   try {
-    // Check status first
     const statusRes = await fetch(`${base}/status`, { headers });
     const statusData = await statusRes.json();
 
@@ -36,12 +35,8 @@ export default async function handler(req) {
       });
     }
 
-    // Fetch actual result when completed
     const resultRes = await fetch(base, { headers });
     const result = await resultRes.json();
-
-    console.log("fal result keys:", JSON.stringify(Object.keys(result)));
-    console.log("fal result:", JSON.stringify(result).slice(0, 500));
 
     const imageUrl =
       result.images?.[0]?.url ||
@@ -49,7 +44,7 @@ export default async function handler(req) {
       result.output?.images?.[0]?.url ||
       result.output?.image?.url;
 
-    return new Response(JSON.stringify({ status: "COMPLETED", imageUrl, _raw: result }), {
+    return new Response(JSON.stringify({ status: "COMPLETED", imageUrl }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
