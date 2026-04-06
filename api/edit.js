@@ -24,7 +24,12 @@ export default async function handler(req) {
             },
           ],
         }],
-        generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+        generationConfig: {
+          responseModalities: ["IMAGE", "TEXT"],
+          temperature: 1,
+          topP: 0.95,
+          topK: 40,
+        },
       }),
     }
   );
@@ -32,7 +37,7 @@ export default async function handler(req) {
   const data = await response.json();
 
   if (!response.ok) {
-    return new Response(JSON.stringify({ error: JSON.stringify(data) }), {
+    return new Response(JSON.stringify({ error: data?.error?.message || JSON.stringify(data) }), {
       status: 500, headers: { "Content-Type": "application/json" },
     });
   }
@@ -41,9 +46,10 @@ export default async function handler(req) {
   const imagePart = parts.find(p => p.inline_data?.mime_type?.startsWith("image/"));
 
   if (!imagePart) {
-    return new Response(JSON.stringify({ error: `No image returned. Raw: ${JSON.stringify(data).slice(0, 400)}` }), {
-      status: 500, headers: { "Content-Type": "application/json" },
-    });
+    const textPart = parts.find(p => p.text)?.text || "";
+    return new Response(JSON.stringify({
+      error: `No image returned. Text: "${textPart.slice(0, 200)}" Raw: ${JSON.stringify(data).slice(0, 300)}`,
+    }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
 
   return new Response(JSON.stringify({

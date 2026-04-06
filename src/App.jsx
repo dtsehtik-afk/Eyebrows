@@ -293,6 +293,20 @@ export default function EyebrowAgent() {
 
   useEffect(() => () => stopCamera(), []);
 
+  // Attach wheel + touch with passive:false so preventDefault works
+  useEffect(() => {
+    const el = posContainerRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+    };
+  });
+
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(tr => tr.stop());
     streamRef.current = null;
@@ -632,9 +646,6 @@ export default function EyebrowAgent() {
                   background: "#111",
                   userSelect: "none",
                 }}
-                onTouchStart={onTouchStart}
-                onTouchMove={onTouchMove}
-                onWheel={onWheel}
                 onMouseDown={onMouseDown}
               >
                 <div style={{ position: "absolute", inset: 0 }}>
