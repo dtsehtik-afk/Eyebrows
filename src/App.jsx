@@ -510,14 +510,24 @@ export default function EyebrowAgent() {
     }
   };
 
-  const submitLead = () => {
-    // Open WhatsApp so lead messages the business
+  const submitLead = async () => {
     const name = leadName.trim();
     const phone = leadPhone.trim();
-    if (name && phone) {
-      const msg = encodeURIComponent(`היי! השתמשתי בכלי הגבות שלכם 💄 שמי ${name} (${phone}) ואשמח לקבוע ייעוץ!`);
-      window.open(`https://wa.me/${WHATSAPP_BIZ}?text=${msg}`, "_blank");
+    if (!name || !phone) {
+      setError(lang === "he" ? "נא למלא שם וטלפון להמשך" : "Please fill in your name and phone to continue");
+      return;
     }
+    setError(null);
+    fetch("/api/lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        phone,
+        style: recommendation?.recommendedStyle || "",
+        faceShape: lang === "he" ? recommendation?.faceShapeHebrew : recommendation?.faceShapeEnglish,
+      }),
+    }).catch(() => {});
     generateWithGemini();
   };
 
@@ -840,7 +850,6 @@ export default function EyebrowAgent() {
                 />
               </div>
               <button onClick={submitLead} style={btnPrimary}>{t.leadBtn}</button>
-              <button onClick={generateWithGemini} style={btnGhost}>{t.leadSkip}</button>
             </div>
           )}
 
