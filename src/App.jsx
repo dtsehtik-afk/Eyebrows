@@ -1,4 +1,62 @@
 import { useState, useRef, useEffect } from "react";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+
+// MediaPipe eyebrow landmark indices (468-point model)
+const RIGHT_BROW_IDX = [46, 53, 52, 65, 55, 70, 63, 105, 66, 107]; // person's right = image left
+const LEFT_BROW_IDX  = [276, 283, 282, 295, 285, 300, 293, 334, 296, 336]; // person's left = image right
+
+let _landmarker = null;
+let _landmarkerLoading = null;
+
+async function getFaceLandmarker() {
+  if (_landmarker) return _landmarker;
+  if (_landmarkerLoading) return _landmarkerLoading;
+  _landmarkerLoading = (async () => {
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    _landmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU",
+      },
+      runningMode: "IMAGE",
+      numFaces: 1,
+    });
+    return _landmarker;
+  })();
+  return _landmarkerLoading;
+}
+
+// Returns { right: {x,y,w,h}, left: {x,y,w,h} } in normalized [0,1] coords, or null
+async function detectBrowBoxes(imageBase64) {
+  try {
+    const landmarker = await getFaceLandmarker();
+    return await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const result = landmarker.detect(img);
+          if (!result.faceLandmarks?.length) { resolve(null); return; }
+          const lm = result.faceLandmarks[0];
+          const browBox = (indices, padX = 0.012, padY = 0.018) => {
+            const xs = indices.map(i => lm[i].x);
+            const ys = indices.map(i => lm[i].y);
+            const minX = Math.max(0, Math.min(...xs) - padX);
+            const minY = Math.max(0, Math.min(...ys) - padY);
+            const maxX = Math.min(1, Math.max(...xs) + padX);
+            const maxY = Math.min(1, Math.max(...ys) + padY);
+            return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+          };
+          resolve({ right: browBox(RIGHT_BROW_IDX), left: browBox(LEFT_BROW_IDX) });
+        } catch { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = `data:image/jpeg;base64,${imageBase64}`;
+    });
+  } catch { return null; }
+}
 
 // Resize image to max 1024px and compress before sending to API
 function resizeImage(base64, maxSize = 1024, quality = 0.85) {
@@ -95,7 +153,24 @@ const BROW_COLORS = [
 ];
 
 // ─── Canvas eyebrow application ───────────────────────────────────────────────
-function applyEyebrowStyle(imageBase64, browBox, styleIndex, colorHex) {
+function sampleSkinColor(ctx, x, y, w, h) {
+  const data = ctx.getImageData(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+  let r = 0, g = 0, b = 0;
+  for (let i = 0; i < data.data.length; i += 4) { r += data.data[i]; g += data.data[i+1]; b += data.data[i+2]; }
+  const n = data.data.length / 4;
+  return `rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})`;
+}
+
+function coverBrow(ctx, bx, by, bw, bh, skinColor) {
+  ctx.save();
+  ctx.filter = `blur(${Math.round(bh * 0.4)}px)`;
+  ctx.fillStyle = skinColor;
+  ctx.fillRect(bx - bh * 0.3, by - bh * 0.2, bw + bh * 0.6, bh + bh * 0.4);
+  ctx.filter = "none";
+  ctx.restore();
+}
+
+async function applyEyebrowStyle(imageBase64, browBoxes, styleIndex, colorHex) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onerror = reject;
@@ -106,42 +181,36 @@ function applyEyebrowStyle(imageBase64, browBox, styleIndex, colorHex) {
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
 
-      // Use a fallback browBox if Gemini didn't return one
-      const box = browBox || { x: 0.10, y: 0.28, w: 0.80, h: 0.14 };
-      const bx = box.x * img.width;
-      const by = box.y * img.height;
-      const bw = box.w * img.width;
-      const bh = box.h * img.height;
-
-      // Sample skin color from the forehead (area above the brows)
-      const sampleY = Math.max(0, Math.round(by - bh * 0.6));
-      const sampleH = Math.max(4, Math.round(bh * 0.35));
-      const skinData = ctx.getImageData(Math.round(bx + bw * 0.15), sampleY, Math.round(bw * 0.7), sampleH);
-      let sr = 0, sg = 0, sb = 0;
-      for (let i = 0; i < skinData.data.length; i += 4) {
-        sr += skinData.data[i];
-        sg += skinData.data[i + 1];
-        sb += skinData.data[i + 2];
-      }
-      const n = skinData.data.length / 4;
-      const skinColor = `rgb(${Math.round(sr / n)},${Math.round(sg / n)},${Math.round(sb / n)})`;
-
-      // Cover original brows with blurred skin patch
-      ctx.save();
-      ctx.filter = `blur(${Math.round(bh * 0.35)}px)`;
-      ctx.fillStyle = skinColor;
-      ctx.fillRect(bx - bh * 0.3, by - bh * 0.15, bw + bh * 0.6, bh + bh * 0.3);
-      ctx.filter = "none";
-      ctx.restore();
-
       const style = BROW_STYLES[styleIndex] || BROW_STYLES[0];
-      const gap = bw * 0.05;
-      const halfW = (bw - gap) / 2;
 
-      // Right brow (person's right = left side of image)
-      drawBrowShape(ctx, bx, by, halfW, bh, style.spine, colorHex, false);
-      // Left brow (person's left = right side of image, mirrored)
-      drawBrowShape(ctx, bx + halfW + gap, by, halfW, bh, style.spine, colorHex, true);
+      // browBoxes is { right, left } from MediaPipe, or null (fallback to split estimate)
+      let rightBox, leftBox;
+      if (browBoxes?.right && browBoxes?.left) {
+        rightBox = browBoxes.right;
+        leftBox  = browBoxes.left;
+      } else {
+        // Fallback: split the Gemini browBox 50/50
+        const box = browBoxes || { x: 0.10, y: 0.30, w: 0.80, h: 0.13 };
+        const gap = box.w * 0.04;
+        const hw = (box.w - gap) / 2;
+        rightBox = { x: box.x,        y: box.y, w: hw, h: box.h };
+        leftBox  = { x: box.x + hw + gap, y: box.y, w: hw, h: box.h };
+      }
+
+      const applyOne = (box, flip) => {
+        const bx = box.x * img.width;
+        const by = box.y * img.height;
+        const bw = box.w * img.width;
+        const bh = box.h * img.height;
+        // Sample skin from just above the brow
+        const skinY = Math.max(0, by - bh * 0.8);
+        const skinColor = sampleSkinColor(ctx, bx + bw*0.1, skinY, bw*0.8, Math.max(4, bh*0.4));
+        coverBrow(ctx, bx, by, bw, bh, skinColor);
+        drawBrowShape(ctx, bx, by, bw, bh, style.spine, colorHex, flip);
+      };
+
+      applyOne(rightBox, false); // person's right brow — not flipped
+      applyOne(leftBox,  true);  // person's left brow  — mirrored
 
       resolve(canvas.toDataURL("image/jpeg", 0.93));
     };
@@ -357,7 +426,11 @@ export default function EyebrowAgent() {
   const t = T[lang];
   const dir = lang === "he" ? "rtl" : "ltr";
 
-  useEffect(() => () => stopCamera(), []);
+  useEffect(() => {
+    // Preload MediaPipe model in background on mount
+    getFaceLandmarker().catch(() => {});
+    return () => stopCamera();
+  }, []);
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(tr => tr.stop());
@@ -420,16 +493,13 @@ export default function EyebrowAgent() {
     }
   };
 
-  const applyBrowStyle = async () => {
+  const applyBrowStyle = async (styleIdx = selectedStyle, colorHex = selectedColor.hex) => {
     setStep(STEPS.GENERATING);
     setError(null);
     try {
-      const resultDataUrl = await applyEyebrowStyle(
-        imageBase64,
-        recommendation?.browBox,
-        selectedStyle,
-        selectedColor.hex,
-      );
+      // Detect precise brow positions with MediaPipe; fall back to Gemini's browBox
+      const browBoxes = await detectBrowBoxes(imageBase64) || recommendation?.browBox;
+      const resultDataUrl = await applyEyebrowStyle(imageBase64, browBoxes, styleIdx, colorHex);
       setResultImage(resultDataUrl);
       setStep(STEPS.RESULT);
     } catch (err) {
@@ -663,7 +733,7 @@ export default function EyebrowAgent() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "6px", marginBottom: "12px" }}>
                 {BROW_STYLES.map((style, i) => (
                   <button key={style.id}
-                    onClick={async () => { setSelectedStyle(i); setStep(STEPS.GENERATING); const r = await applyEyebrowStyle(imageBase64, recommendation?.browBox, i, selectedColor.hex); setResultImage(r); setStep(STEPS.RESULT); }}
+                    onClick={() => { setSelectedStyle(i); applyBrowStyle(i, selectedColor.hex); }}
                     style={{
                       padding: "8px 4px", borderRadius: "8px", cursor: "pointer", fontSize: "11px", fontWeight: "600",
                       background: selectedStyle === i ? "rgba(200,100,160,0.25)" : "rgba(255,255,255,0.04)",
@@ -677,7 +747,7 @@ export default function EyebrowAgent() {
               <div style={{ display: "flex", gap: "8px", marginBottom: "20px", justifyContent: "center" }}>
                 {BROW_COLORS.map((color) => (
                   <button key={color.hex}
-                    onClick={async () => { setSelectedColor(color); setStep(STEPS.GENERATING); const r = await applyEyebrowStyle(imageBase64, recommendation?.browBox, selectedStyle, color.hex); setResultImage(r); setStep(STEPS.RESULT); }}
+                    onClick={() => { setSelectedColor(color); applyBrowStyle(selectedStyle, color.hex); }}
                     style={{
                       width: "28px", height: "28px", borderRadius: "50%", cursor: "pointer",
                       background: color.hex,
