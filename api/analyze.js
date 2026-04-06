@@ -60,7 +60,7 @@ Return ONLY valid JSON, no extra text, no markdown:
   "asymmetryNote": "describe any left-right asymmetry, or 'symmetric' if balanced",
   "tips_he": ["טיפ 1", "טיפ 2", "טיפ 3"],
   "tips_en": ["tip 1", "tip 2", "tip 3"],
-  "imagePrompt": "Precise FLUX instruction: describe exact eyebrow thickness (thin/medium/thick), arch height (low/medium/high), arch peak position (above outer iris / above pupil), tail direction (slightly downward / flat / upward), brow color and gradient, texture (defined/feathered/powdery), start and end points relative to the eye corners. Be very specific about shape geometry.",
+  "imagePrompt": "Write a generation prompt for FLUX inpainting (describe what to paint IN the masked eyebrow area). Include: brow color (e.g. 'soft dark brown'), thickness (thin/medium/thick), arch shape (soft/high/straight), arch peak position, tail direction, texture (natural hair strokes / defined / feathered), density. Example: 'medium-thick soft-arch brown eyebrows with natural hair strokes, defined inner corner, gently tapered tail, professional makeup'. Be specific and concise — 1-2 sentences max.",
   "browBox": {"x": 0.10, "y": 0.28, "w": 0.80, "h": 0.14}
 }
 

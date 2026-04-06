@@ -14,24 +14,27 @@ function createBrowMask(imageBase64, browBox) {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       // White = regenerate (eyebrow area)
       ctx.fillStyle = "white";
-      // Shrink box slightly to avoid forehead/nose bleed
       const padding = 0.015;
       const x = (browBox.x + padding) * img.width;
       const y = (browBox.y + padding) * img.height;
       const w = (browBox.w - padding * 2) * img.width;
       const h = (browBox.h - padding) * img.height;
       const r = Math.min(w, h) * 0.35;
+      // Feathered edges — blur creates natural blending with surrounding skin
+      const blurPx = Math.round(h * 0.25);
+      ctx.filter = `blur(${blurPx}px)`;
       ctx.beginPath();
       ctx.roundRect(x, y, w, h, r);
       ctx.fill();
+      ctx.filter = "none";
       resolve(canvas.toDataURL("image/png").split(",")[1]);
     };
     img.src = `data:image/jpeg;base64,${imageBase64}`;
   });
 }
 
-// Resize image to max 800px and compress before sending to API
-function resizeImage(base64, maxSize = 800, quality = 0.7) {
+// Resize image to max 1024px and compress before sending to API
+function resizeImage(base64, maxSize = 1024, quality = 0.85) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
