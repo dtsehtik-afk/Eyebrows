@@ -24,7 +24,8 @@ export default async function handler(req) {
       ? {
           image_url: `data:image/jpeg;base64,${imageBase64}`,
           mask_url: `data:image/png;base64,${maskBase64}`,
-          prompt: `${prompt}. Photorealistic, same lighting, natural beauty.`,
+          prompt: `${prompt}. Perfectly groomed eyebrows only. Same skin tone, same age, same smooth skin, same lighting, photorealistic beauty portrait.`,
+          negative_prompt: "wrinkles, skin texture, forehead lines, aged, old, different skin, blemishes, makeup, change face",
           num_inference_steps: 28,
           guidance_scale: 10,
         }

@@ -14,10 +14,12 @@ function createBrowMask(imageBase64, browBox) {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       // White = regenerate (eyebrow area)
       ctx.fillStyle = "white";
-      const x = browBox.x * img.width;
-      const y = browBox.y * img.height;
-      const w = browBox.w * img.width;
-      const h = browBox.h * img.height;
+      // Shrink box slightly to avoid forehead/nose bleed
+      const padding = 0.015;
+      const x = (browBox.x + padding) * img.width;
+      const y = (browBox.y + padding) * img.height;
+      const w = (browBox.w - padding * 2) * img.width;
+      const h = (browBox.h - padding) * img.height;
       const r = Math.min(w, h) * 0.35;
       ctx.beginPath();
       ctx.roundRect(x, y, w, h, r);
