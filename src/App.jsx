@@ -190,6 +190,14 @@ const T = {
     privacy: "התמונה שלך לא נשמרת ומשמשת לניתוח בלבד 🔒",
     bookAlert: "מעולה! נציגה שלנו תחזור אלייך בהקדם 💕",
     consultAlert: "נשלחה בקשה לתיאום ייעוץ! נחזור אלייך בקרוב 💕",
+    leadTitle: "כמעט שם! 🎉",
+    leadSubtitle: "השאירי פרטים וניצור איתך קשר לקביעת תור",
+    leadName: "שם מלא",
+    leadPhone: "טלפון",
+    leadBtn: "🪄 צרי לי הדמיה!",
+    leadSkip: "דלגי",
+    shareBtn: "📤 שתפי את התוצאה",
+    closeLightbox: "✕",
     errorAnalyze: "שגיאה בניתוח התמונה. נסי שנית.",
     errorGenerate: "שגיאה ביצירת ההדמיה. נסי שנית.",
     cameraError: "לא ניתן לגשת למצלמה. בדקי הרשאות.",
@@ -230,6 +238,14 @@ const T = {
     privacy: "Your photo is not saved and is used for analysis only 🔒",
     bookAlert: "Great! Our specialist will get back to you shortly 💕",
     consultAlert: "Consultation request sent! We'll be in touch soon 💕",
+    leadTitle: "Almost there! 🎉",
+    leadSubtitle: "Leave your details and we'll reach out to book a session",
+    leadName: "Full name",
+    leadPhone: "Phone",
+    leadBtn: "🪄 Generate My Simulation!",
+    leadSkip: "Skip",
+    shareBtn: "📤 Share Result",
+    closeLightbox: "✕",
     errorAnalyze: "Error analyzing image. Please try again.",
     errorGenerate: "Error generating simulation. Please try again.",
     cameraError: "Cannot access camera. Please check permissions.",
@@ -242,9 +258,12 @@ const STEPS = {
   POSITIONING: "positioning",
   ANALYZING: "analyzing",
   RECOMMENDATION: "recommendation",
+  LEAD: "lead",
   GENERATING: "generating",
   RESULT: "result",
 };
+
+const WHATSAPP_BIZ = "972504764371";
 
 // Oval face guide SVG overlay (viewBox 100×133 = 3:4 ratio)
 // Oval top at ~13.5% → eyebrows land at ~34% of captured image = matches mask
@@ -276,6 +295,10 @@ export default function EyebrowAgent() {
   const [recommendation, setRecommendation] = useState(null);
   const [resultImage, setResultImage] = useState(null);
   const [error, setError] = useState(null);
+  const [leadName, setLeadName] = useState("");
+  const [leadPhone, setLeadPhone] = useState("");
+  const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [flashVisible, setFlashVisible] = useState(false);
 
   // Positioning state
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -326,8 +349,17 @@ export default function EyebrowAgent() {
   const capturePhoto = () => {
     const video = videoRef.current, canvas = canvasRef.current;
     if (!video || !canvas) return;
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0);
+    // Screen flash
+    setFlashVisible(true);
+    setTimeout(() => setFlashVisible(false), 280);
+    const w = video.videoWidth, h = video.videoHeight;
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    // Un-flip: front camera is mirrored in CSS but raw frame isn't — flip canvas so result matches preview
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
     setImage(dataUrl);
     const b64 = dataUrl.split(",")[1];
@@ -478,6 +510,59 @@ export default function EyebrowAgent() {
     }
   };
 
+  const submitLead = () => {
+    // Open WhatsApp so lead messages the business
+    const name = leadName.trim();
+    const phone = leadPhone.trim();
+    if (name && phone) {
+      const msg = encodeURIComponent(`היי! השתמשתי בכלי הגבות שלכם 💄 שמי ${name} (${phone}) ואשמח לקבוע ייעוץ!`);
+      window.open(`https://wa.me/${WHATSAPP_BIZ}?text=${msg}`, "_blank");
+    }
+    generateWithGemini();
+  };
+
+  const shareResult = async () => {
+    try {
+      // Build composite canvas: before | after + text
+      const buildCanvas = () => new Promise((resolve) => {
+        const beforeImg = new Image(); const afterImg = new Image();
+        beforeImg.crossOrigin = "anonymous"; afterImg.crossOrigin = "anonymous";
+        let loaded = 0;
+        const onLoad = () => { if (++loaded < 2) return;
+          const W = 800, H = 480, pad = 16;
+          const c = document.createElement("canvas"); c.width = W; c.height = H;
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#1a0a0f"; ctx.fillRect(0, 0, W, H);
+          ctx.drawImage(beforeImg, pad, pad, W/2 - pad*1.5, H - pad*2);
+          ctx.drawImage(afterImg, W/2 + pad*0.5, pad, W/2 - pad*1.5, H - pad*2);
+          ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "bold 18px sans-serif";
+          ctx.fillText("לפני", pad + 8, H - pad - 8);
+          ctx.fillStyle = "#e8a0c8";
+          ctx.fillText("אחרי ✨", W/2 + pad*0.5 + 8, H - pad - 8);
+          resolve(c);
+        };
+        beforeImg.onload = onLoad; afterImg.onload = onLoad;
+        beforeImg.src = image; afterImg.src = resultImage;
+      });
+      const canvas = await buildCanvas();
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], "eyebrows-result.jpg", { type: "image/jpeg" });
+        const desc = lang === "he"
+          ? `${recommendation?.recommendedStyle || ""} — ${(recommendation?.tips_he || [])[0] || ""}`
+          : `${recommendation?.recommendedStyle || ""} — ${(recommendation?.tips_en || [])[0] || ""}`;
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: t.title, text: desc });
+        } else {
+          // Fallback: download
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "eyebrows-result.jpg";
+          a.click();
+        }
+      }, "image/jpeg", 0.92);
+    } catch (e) { /* user cancelled */ }
+  };
+
   const generateWithGemini = async () => {
     setStep(STEPS.GENERATING); setError(null);
     try {
@@ -539,7 +624,7 @@ export default function EyebrowAgent() {
   const progressMap = {
     [STEPS.UPLOAD]: 0, [STEPS.CAMERA]: 0, [STEPS.POSITIONING]: 0,
     [STEPS.ANALYZING]: 1, [STEPS.RECOMMENDATION]: 2,
-    [STEPS.GENERATING]: 3, [STEPS.RESULT]: 3,
+    [STEPS.LEAD]: 3, [STEPS.GENERATING]: 3, [STEPS.RESULT]: 3,
   };
   const progressIndex = progressMap[step] ?? 0;
 
@@ -610,6 +695,7 @@ export default function EyebrowAgent() {
           {/* ── CAMERA ── */}
           {step === STEPS.CAMERA && (
             <div style={{ textAlign: "center" }}>
+              {flashVisible && <div style={{ position: "fixed", inset: 0, background: "white", zIndex: 9999, pointerEvents: "none", opacity: 0.95 }} />}
               <canvas ref={canvasRef} style={{ display: "none" }} />
               <div style={{ position: "relative", marginBottom: "16px" }}>
                 <video ref={videoRef} autoPlay playsInline muted
@@ -724,8 +810,37 @@ export default function EyebrowAgent() {
                 ))}
               </div>
 
-              <button onClick={generateWithGemini} style={btnPrimary}>{t.generateBtn}</button>
+              <button onClick={() => setStep(STEPS.LEAD)} style={btnPrimary}>{t.generateBtn}</button>
               <button onClick={() => alert(t.consultAlert)} style={btnSecondary}>{t.bookBtn}</button>
+            </div>
+          )}
+
+          {/* ── LEAD ── */}
+          {step === STEPS.LEAD && (
+            <div>
+              <div style={{ textAlign: "center", marginBottom: "24px" }}>
+                <div style={{ fontSize: "42px", marginBottom: "10px" }}>💌</div>
+                <p style={{ color: "#f0d4e8", fontSize: "18px", fontWeight: "700", margin: "0 0 6px" }}>{t.leadTitle}</p>
+                <p style={{ color: "#9a7088", fontSize: "13px", margin: 0 }}>{t.leadSubtitle}</p>
+              </div>
+              <div style={{ marginBottom: "14px" }}>
+                <input
+                  type="text"
+                  placeholder={t.leadName}
+                  value={leadName}
+                  onChange={e => setLeadName(e.target.value)}
+                  style={{ width: "100%", padding: "14px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "12px", color: "#f0d4e8", fontSize: "15px", outline: "none", boxSizing: "border-box", marginBottom: "10px", direction: "rtl" }}
+                />
+                <input
+                  type="tel"
+                  placeholder={t.leadPhone}
+                  value={leadPhone}
+                  onChange={e => setLeadPhone(e.target.value)}
+                  style={{ width: "100%", padding: "14px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "12px", color: "#f0d4e8", fontSize: "15px", outline: "none", boxSizing: "border-box", direction: "ltr" }}
+                />
+              </div>
+              <button onClick={submitLead} style={btnPrimary}>{t.leadBtn}</button>
+              <button onClick={generateWithGemini} style={btnGhost}>{t.leadSkip}</button>
             </div>
           )}
 
@@ -749,11 +864,13 @@ export default function EyebrowAgent() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
                 <div>
                   <p style={{ color: "#9a7088", fontSize: "12px", textAlign: "center", margin: "0 0 8px" }}>{t.before}</p>
-                  <img src={image} style={{ width: "100%", borderRadius: "10px", aspectRatio: "1", objectFit: "cover" }} />
+                  <img src={image} onClick={() => setLightboxSrc(image)}
+                    style={{ width: "100%", borderRadius: "10px", aspectRatio: "1", objectFit: "cover", cursor: "zoom-in" }} />
                 </div>
                 <div>
                   <p style={{ color: "#e8a0c8", fontSize: "12px", textAlign: "center", margin: "0 0 8px", fontWeight: "700" }}>{t.after}</p>
-                  <img src={resultImage} style={{ width: "100%", borderRadius: "10px", aspectRatio: "1", objectFit: "cover", border: "2px solid rgba(200,100,160,0.5)" }} />
+                  <img src={resultImage} onClick={() => setLightboxSrc(resultImage)}
+                    style={{ width: "100%", borderRadius: "10px", aspectRatio: "1", objectFit: "cover", border: "2px solid rgba(200,100,160,0.5)", cursor: "zoom-in" }} />
                 </div>
               </div>
 
@@ -763,6 +880,7 @@ export default function EyebrowAgent() {
               </div>
 
               <button onClick={() => alert(t.bookAlert)} style={btnPrimary}>{t.bookNow}</button>
+              <button onClick={shareResult} style={btnSecondary}>{t.shareBtn}</button>
               <button onClick={reset} style={btnGhost}>{t.tryAnother}</button>
             </div>
           )}
@@ -770,6 +888,18 @@ export default function EyebrowAgent() {
         </div>
         <p style={{ textAlign: "center", color: "#5a3850", fontSize: "12px", marginTop: "16px" }}>{t.privacy}</p>
       </div>
+
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <div onClick={() => setLightboxSrc(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 9998, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <button onClick={() => setLightboxSrc(null)}
+            style={{ position: "absolute", top: "16px", right: "16px", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", color: "white", fontSize: "20px", width: "40px", height: "40px", cursor: "pointer" }}>
+            {t.closeLightbox}
+          </button>
+          <img src={lightboxSrc} style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: "12px", objectFit: "contain" }} />
+        </div>
+      )}
     </div>
   );
 }
