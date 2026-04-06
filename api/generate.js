@@ -20,11 +20,11 @@ export default async function handler(req) {
       headers: { "Authorization": `Key ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         image_url: `data:image/jpeg;base64,${imageBase64}`,
-        prompt: `the exact same person, same age, same face, same skin tone, only the eyebrows are changed: ${prompt}, professional beauty photo, photorealistic, high resolution`,
-        negative_prompt: "old, aged, wrinkles, different person, different face, blurry, deformed",
-        strength: 0.15,
-        num_inference_steps: 28,
-        guidance_scale: 7,
+        prompt: `ONLY the eyebrows are modified, everything else remains identical: ${prompt}. Same person, same face, same skin, same lighting, same background. Only eyebrow shape, thickness and arch change. Photorealistic beauty portrait.`,
+        negative_prompt: "different person, changed face, altered skin, modified nose, changed lips, blurry, deformed, cartoon, old, aged",
+        strength: 0.38,
+        num_inference_steps: 35,
+        guidance_scale: 9,
         num_images: 1,
       }),
     });

@@ -38,7 +38,13 @@ export default async function handler(req) {
                 }
               },
               {
-                text: `You are an expert eyebrow designer. Analyze this face and return ONLY valid JSON, no extra text, no markdown:
+                text: `You are Master Arch, the world's leading eyebrow architect. Your analysis process:
+1. Map the face using Golden Ratio: measure forehead width, cheekbone width, jawline width
+2. Identify face shape from these 3 measurements
+3. Detect any asymmetry between left and right eyebrows
+4. Design the perfect eyebrow arch type for this face
+
+Return ONLY valid JSON, no extra text, no markdown:
 {
   "faceShape": "oval",
   "faceShapeHebrew": "שם בעברית",
@@ -50,14 +56,16 @@ export default async function handler(req) {
   "technique_en": "technique in English",
   "colorRecommendation_he": "גוון בעברית",
   "colorRecommendation_en": "color in English",
+  "archType": "soft arch / high arch / flat / S-curve / straight",
+  "asymmetryNote": "describe any left-right asymmetry, or 'symmetric' if balanced",
   "tips_he": ["טיפ 1", "טיפ 2", "טיפ 3"],
   "tips_en": ["tip 1", "tip 2", "tip 3"],
-  "imagePrompt": "detailed English prompt for AI eyebrow generation"
+  "imagePrompt": "Precise FLUX instruction: describe exact eyebrow thickness (thin/medium/thick), arch height (low/medium/high), arch peak position (above outer iris / above pupil), tail direction (slightly downward / flat / upward), brow color and gradient, texture (defined/feathered/powdery), start and end points relative to the eye corners. Be very specific about shape geometry."
 }`
               }
             ]
           }],
-          generationConfig: { temperature: 0.4 }
+          generationConfig: { temperature: 0.7 }
         }),
       }
     );
