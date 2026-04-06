@@ -1,5 +1,32 @@
 import { useState, useRef, useEffect } from "react";
 
+// Fixed oval mask covering the eye+brow area (calibrated to face guide oval)
+function createEyeMask(imageBase64) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const cx = canvas.width * 0.5;
+      const cy = canvas.height * 0.34;
+      const rx = canvas.width * 0.44;
+      const ry = canvas.height * 0.095;
+      ctx.filter = `blur(${Math.round(canvas.height * 0.022)}px)`;
+      ctx.fillStyle = "white";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.filter = "none";
+      resolve(canvas.toDataURL("image/png").split(",")[1]);
+    };
+    img.src = `data:image/jpeg;base64,${imageBase64}`;
+  });
+}
+
 function resizeImage(base64, maxSize = 1024, quality = 0.85) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -16,34 +43,7 @@ function resizeImage(base64, maxSize = 1024, quality = 0.85) {
   });
 }
 
-// Fixed oval mask covering the eye+brow area (no face detection needed)
-function createEyeMask(imageBase64) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      // White oval centered at ~33% height (brow+eye area in typical selfie)
-      const cx = canvas.width * 0.5;
-      const cy = canvas.height * 0.33;
-      const rx = canvas.width * 0.44;
-      const ry = canvas.height * 0.10;
-      ctx.filter = `blur(${Math.round(canvas.height * 0.025)}px)`;
-      ctx.fillStyle = "white";
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.filter = "none";
-      resolve(canvas.toDataURL("image/png").split(",")[1]);
-    };
-    img.src = `data:image/jpeg;base64,${imageBase64}`;
-  });
-}
-
+// ─── i18n ────────────────────────────────────────────────────────────────────
 const T = {
   he: {
     title: "ייעוץ גבות חכם",
@@ -56,6 +56,9 @@ const T = {
     uploadHint: "סלפי ברור של הפנים — ככה נקבל את ההמלצה הכי מדויקת",
     captureBtn: "📸 צלמי",
     retakeBtn: "חזרה",
+    positionHint: "כוונני את הפנים שלך בתוך המסגרת",
+    positionDrag: "גרירה להזזה  •  צביטה לזום",
+    confirmBtn: "✓ אשרי ונתחי",
     analyzeBtn: "נתחי את הגבות שלי ✨",
     changeBtn: "החלפה",
     analyzingTitle: "מנתחת את הפנים שלך...",
@@ -93,6 +96,9 @@ const T = {
     uploadHint: "A clear selfie — this gives us the most accurate recommendation",
     captureBtn: "📸 Capture",
     retakeBtn: "Back",
+    positionHint: "Position your face inside the frame",
+    positionDrag: "Drag to move  •  Pinch to zoom",
+    confirmBtn: "✓ Confirm & Analyze",
     analyzeBtn: "Analyze My Brows ✨",
     changeBtn: "Change Photo",
     analyzingTitle: "Analyzing your face...",
@@ -122,18 +128,51 @@ const T = {
 };
 
 const STEPS = {
-  UPLOAD: "upload", CAMERA: "camera", ANALYZING: "analyzing",
-  RECOMMENDATION: "recommendation", GENERATING: "generating", RESULT: "result",
+  UPLOAD: "upload",
+  CAMERA: "camera",
+  POSITIONING: "positioning",
+  ANALYZING: "analyzing",
+  RECOMMENDATION: "recommendation",
+  GENERATING: "generating",
+  RESULT: "result",
 };
+
+// Oval face guide SVG overlay (viewBox 100×133 = 3:4 ratio)
+// Oval top at ~13.5% → eyebrows land at ~34% of captured image = matches mask
+function FaceOvalGuide() {
+  return (
+    <svg
+      viewBox="0 0 100 133"
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+    >
+      <defs>
+        <mask id="ovalCutout">
+          <rect width="100" height="133" fill="white" />
+          <ellipse cx="50" cy="68" rx="43" ry="50" fill="black" />
+        </mask>
+      </defs>
+      <rect width="100" height="133" fill="rgba(0,0,0,0.48)" mask="url(#ovalCutout)" />
+      <ellipse cx="50" cy="68" rx="43" ry="50"
+        fill="none" stroke="#e8a0c8" strokeWidth="0.7" strokeDasharray="4,2" />
+    </svg>
+  );
+}
 
 export default function EyebrowAgent() {
   const [lang, setLang] = useState("he");
   const [step, setStep] = useState(STEPS.UPLOAD);
-  const [image, setImage] = useState(null);
-  const [imageBase64, setImageBase64] = useState(null);
+  const [image, setImage] = useState(null);          // display URL
+  const [imageBase64, setImageBase64] = useState(null); // resized base64 for API
+  const [rawBase64, setRawBase64] = useState(null);   // original for positioning
   const [recommendation, setRecommendation] = useState(null);
   const [resultImage, setResultImage] = useState(null);
   const [error, setError] = useState(null);
+
+  // Positioning state
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const posContainerRef = useRef();
+  const posImgRef = useRef();
+  const touchState = useRef({});
 
   const fileRef = useRef();
   const videoRef = useRef();
@@ -150,6 +189,7 @@ export default function EyebrowAgent() {
     streamRef.current = null;
   };
 
+  // ── Upload handlers ──────────────────────────────────────────────────────
   const startCamera = async () => {
     setError(null);
     try {
@@ -167,8 +207,11 @@ export default function EyebrowAgent() {
     canvas.getContext("2d").drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
     setImage(dataUrl);
-    resizeImage(dataUrl.split(",")[1]).then(setImageBase64);
-    stopCamera(); setStep(STEPS.UPLOAD);
+    const b64 = dataUrl.split(",")[1];
+    setRawBase64(b64);
+    stopCamera();
+    setTransform({ x: 0, y: 0, scale: 1 });
+    setStep(STEPS.POSITIONING);
   };
 
   const handleFileUpload = (e) => {
@@ -176,18 +219,118 @@ export default function EyebrowAgent() {
     if (!file) return;
     setImage(URL.createObjectURL(file));
     const reader = new FileReader();
-    reader.onload = (ev) => resizeImage(ev.target.result.split(",")[1]).then(setImageBase64);
+    reader.onload = (ev) => {
+      const b64 = ev.target.result.split(",")[1];
+      setRawBase64(b64);
+      setTransform({ x: 0, y: 0, scale: 1 });
+      setStep(STEPS.POSITIONING);
+    };
     reader.readAsDataURL(file);
   };
 
-  const analyzeWithClaude = async () => {
-    if (!imageBase64) return;
+  // ── Positioning handlers ─────────────────────────────────────────────────
+  const initPositionScale = () => {
+    const container = posContainerRef.current;
+    const img = posImgRef.current;
+    if (!container || !img) return;
+    const cw = container.offsetWidth;
+    const ch = container.offsetHeight;
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+    const scale = Math.max(cw / iw, ch / ih);
+    setTransform({ x: 0, y: 0, scale });
+  };
+
+  const onTouchStart = (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchState.current = {
+        type: "pinch",
+        startDist: Math.sqrt(dx * dx + dy * dy),
+        startScale: transform.scale,
+        startX: transform.x,
+        startY: transform.y,
+      };
+    } else {
+      touchState.current = {
+        type: "drag",
+        startTX: e.touches[0].clientX,
+        startTY: e.touches[0].clientY,
+        startX: transform.x,
+        startY: transform.y,
+      };
+    }
+  };
+
+  const onTouchMove = (e) => {
+    e.preventDefault();
+    const s = touchState.current;
+    if (s.type === "pinch" && e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = Math.max(0.3, Math.min(5, s.startScale * dist / s.startDist));
+      setTransform(t => ({ ...t, scale }));
+    } else if (s.type === "drag" && e.touches.length === 1) {
+      setTransform(t => ({
+        ...t,
+        x: s.startX + e.touches[0].clientX - s.startTX,
+        y: s.startY + e.touches[0].clientY - s.startTY,
+      }));
+    }
+  };
+
+  const onMouseDown = (e) => {
+    const start = { x: transform.x, y: transform.y, mx: e.clientX, my: e.clientY };
+    const onMove = (ev) => setTransform(t => ({
+      ...t, x: start.x + ev.clientX - start.mx, y: start.y + ev.clientY - start.my,
+    }));
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
+  const onWheel = (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    setTransform(t => ({ ...t, scale: Math.max(0.3, Math.min(5, t.scale * factor)) }));
+  };
+
+  const confirmPosition = async () => {
+    const container = posContainerRef.current;
+    const img = posImgRef.current;
+    if (!container || !img) return;
+    const cw = container.offsetWidth;
+    const ch = container.offsetHeight;
+    const canvas = document.createElement("canvas");
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#888";
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.save();
+    ctx.translate(cw / 2 + transform.x, ch / 2 + transform.y);
+    ctx.scale(transform.scale, transform.scale);
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    ctx.restore();
+    const b64 = canvas.toDataURL("image/jpeg", 0.9).split(",")[1];
+    const resized = await resizeImage(b64, 1024, 0.85);
+    setImageBase64(resized);
+    // Update the display image to show the positioned version
+    setImage(canvas.toDataURL("image/jpeg", 0.9));
+    analyzeWithGemini(resized);
+  };
+
+  // ── Analysis ─────────────────────────────────────────────────────────────
+  const analyzeWithGemini = async (base64 = imageBase64) => {
     setStep(STEPS.ANALYZING); setError(null);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, lang }),
+        body: JSON.stringify({ imageBase64: base64, lang }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -195,28 +338,23 @@ export default function EyebrowAgent() {
       setStep(STEPS.RECOMMENDATION);
     } catch (err) {
       setError(err.message || t.errorAnalyze);
-      setStep(STEPS.UPLOAD);
+      setStep(STEPS.POSITIONING);
     }
   };
 
+  // ── Generation ───────────────────────────────────────────────────────────
   const generateWithFal = async () => {
     setStep(STEPS.GENERATING); setError(null);
     try {
       const maskBase64 = await createEyeMask(imageBase64);
-
       const submitRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64,
-          maskBase64,
-          prompt: recommendation.imagePrompt,
-        }),
+        body: JSON.stringify({ imageBase64, maskBase64, prompt: recommendation.imagePrompt }),
       });
       const submitData = await submitRes.json();
       if (submitData.error) throw new Error(submitData.error);
       const { status_url, response_url } = submitData;
-
       const pollParams = new URLSearchParams({ status_url, response_url });
       for (let i = 0; i < 100; i++) {
         await new Promise(r => setTimeout(r, 3000));
@@ -236,13 +374,16 @@ export default function EyebrowAgent() {
   };
 
   const reset = () => {
-    stopCamera(); setStep(STEPS.UPLOAD); setImage(null); setImageBase64(null);
+    stopCamera(); setStep(STEPS.UPLOAD);
+    setImage(null); setImageBase64(null); setRawBase64(null);
     setRecommendation(null); setResultImage(null); setError(null);
+    setTransform({ x: 0, y: 0, scale: 1 });
   };
 
   const progressMap = {
-    [STEPS.UPLOAD]: 0, [STEPS.CAMERA]: 0, [STEPS.ANALYZING]: 1,
-    [STEPS.RECOMMENDATION]: 2, [STEPS.GENERATING]: 3, [STEPS.RESULT]: 3,
+    [STEPS.UPLOAD]: 0, [STEPS.CAMERA]: 0, [STEPS.POSITIONING]: 0,
+    [STEPS.ANALYZING]: 1, [STEPS.RECOMMENDATION]: 2,
+    [STEPS.GENERATING]: 3, [STEPS.RESULT]: 3,
   };
   const progressIndex = progressMap[step] ?? 0;
 
@@ -254,6 +395,7 @@ export default function EyebrowAgent() {
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#1a0a0f 0%,#2d1020 50%,#1a0a0f 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", fontFamily: "'Segoe UI',Arial,sans-serif" }} dir={dir}>
       <div style={{ width: "100%", maxWidth: "500px" }}>
 
+        {/* Lang toggle */}
         <div style={{ display: "flex", justifyContent: dir === "rtl" ? "flex-start" : "flex-end", marginBottom: "12px" }}>
           <button onClick={() => setLang(l => l === "he" ? "en" : "he")}
             style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "20px", color: "#e8a0c8", fontSize: "13px", padding: "6px 16px", cursor: "pointer" }}>
@@ -261,12 +403,14 @@ export default function EyebrowAgent() {
           </button>
         </div>
 
+        {/* Header */}
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
           <div style={{ fontSize: "40px", marginBottom: "8px" }}>✨</div>
           <h1 style={{ color: "#f0d4e8", fontSize: "26px", fontWeight: "700", margin: "0 0 8px" }}>{t.title}</h1>
           <p style={{ color: "#c4a0b8", fontSize: "14px", margin: 0 }}>{t.subtitle}</p>
         </div>
 
+        {/* Progress */}
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "4px", marginBottom: "24px" }}>
           {t.steps.map((label, i) => {
             const active = i <= progressIndex;
@@ -286,6 +430,7 @@ export default function EyebrowAgent() {
           })}
         </div>
 
+        {/* Card */}
         <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: "20px", border: "1px solid rgba(200,100,160,0.2)", padding: "28px", backdropFilter: "blur(10px)" }}>
 
           {error && (
@@ -294,40 +439,87 @@ export default function EyebrowAgent() {
             </div>
           )}
 
+          {/* ── UPLOAD ── */}
           {step === STEPS.UPLOAD && (
             <div>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleFileUpload} style={{ display: "none" }} />
               <canvas ref={canvasRef} style={{ display: "none" }} />
-              {!image ? (
-                <>
-                  <p style={{ color: "#c4a0b8", fontSize: "14px", textAlign: "center", margin: "0 0 20px", fontWeight: "600" }}>{t.uploadTitle}</p>
-                  <button onClick={() => fileRef.current.click()} style={btnPrimary}>{t.uploadBtn}</button>
-                  <button onClick={startCamera} style={btnSecondary}>{t.cameraBtn}</button>
-                  <p style={{ color: "#5a3860", fontSize: "12px", textAlign: "center", margin: "12px 0 0" }}>{t.uploadHint}</p>
-                </>
-              ) : (
-                <>
-                  <img src={image} alt="preview" style={{ width: "100%", borderRadius: "12px", maxHeight: "300px", objectFit: "cover", marginBottom: "16px" }} />
-                  <button onClick={analyzeWithClaude} style={btnPrimary}>{t.analyzeBtn}</button>
-                  <button onClick={reset} style={btnGhost}>{t.changeBtn}</button>
-                </>
-              )}
+              <p style={{ color: "#c4a0b8", fontSize: "14px", textAlign: "center", margin: "0 0 20px", fontWeight: "600" }}>{t.uploadTitle}</p>
+              <button onClick={() => fileRef.current.click()} style={btnPrimary}>{t.uploadBtn}</button>
+              <button onClick={startCamera} style={btnSecondary}>{t.cameraBtn}</button>
+              <p style={{ color: "#5a3860", fontSize: "12px", textAlign: "center", margin: "12px 0 0" }}>{t.uploadHint}</p>
             </div>
           )}
 
+          {/* ── CAMERA ── */}
           {step === STEPS.CAMERA && (
             <div style={{ textAlign: "center" }}>
               <canvas ref={canvasRef} style={{ display: "none" }} />
               <div style={{ position: "relative", marginBottom: "16px" }}>
                 <video ref={videoRef} autoPlay playsInline muted
-                  style={{ width: "100%", borderRadius: "12px", maxHeight: "320px", objectFit: "cover", transform: "scaleX(-1)" }} />
-                <div style={{ position: "absolute", inset: 0, border: "3px solid rgba(200,100,160,0.5)", borderRadius: "12px", pointerEvents: "none" }} />
+                  style={{ width: "100%", borderRadius: "12px", maxHeight: "380px", objectFit: "cover", transform: "scaleX(-1)", display: "block" }} />
+                {/* Oval guide on camera */}
+                <div style={{ position: "absolute", inset: 0 }}>
+                  <FaceOvalGuide />
+                </div>
               </div>
+              <p style={{ color: "#9a7088", fontSize: "12px", margin: "0 0 14px" }}>{t.positionHint}</p>
               <button onClick={capturePhoto} style={btnPrimary}>{t.captureBtn}</button>
               <button onClick={() => { stopCamera(); setStep(STEPS.UPLOAD); }} style={btnGhost}>{t.retakeBtn}</button>
             </div>
           )}
 
+          {/* ── POSITIONING ── */}
+          {step === STEPS.POSITIONING && rawBase64 && (
+            <div>
+              <p style={{ color: "#f0d4e8", fontSize: "14px", textAlign: "center", margin: "0 0 6px", fontWeight: "600" }}>{t.positionHint}</p>
+              <p style={{ color: "#7a5068", fontSize: "12px", textAlign: "center", margin: "0 0 12px" }}>{t.positionDrag}</p>
+
+              {/* Draggable image container with oval overlay */}
+              <div
+                ref={posContainerRef}
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  paddingBottom: "133%",
+                  overflow: "hidden",
+                  borderRadius: "14px",
+                  cursor: "grab",
+                  touchAction: "none",
+                  marginBottom: "16px",
+                  background: "#111",
+                  userSelect: "none",
+                }}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onWheel={onWheel}
+                onMouseDown={onMouseDown}
+              >
+                <div style={{ position: "absolute", inset: 0 }}>
+                  <img
+                    ref={posImgRef}
+                    src={`data:image/jpeg;base64,${rawBase64}`}
+                    onLoad={initPositionScale}
+                    draggable={false}
+                    style={{
+                      position: "absolute",
+                      left: "50%", top: "50%",
+                      transform: `translate(calc(-50% + ${transform.x}px), calc(-50% + ${transform.y}px)) scale(${transform.scale})`,
+                      transformOrigin: "center center",
+                      maxWidth: "none",
+                      pointerEvents: "none",
+                    }}
+                  />
+                  <FaceOvalGuide />
+                </div>
+              </div>
+
+              <button onClick={confirmPosition} style={btnPrimary}>{t.confirmBtn}</button>
+              <button onClick={reset} style={btnGhost}>{t.changeBtn}</button>
+            </div>
+          )}
+
+          {/* ── ANALYZING ── */}
           {step === STEPS.ANALYZING && (
             <div style={{ textAlign: "center", padding: "40px 0" }}>
               <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
@@ -337,6 +529,7 @@ export default function EyebrowAgent() {
             </div>
           )}
 
+          {/* ── RECOMMENDATION ── */}
           {step === STEPS.RECOMMENDATION && recommendation && (
             <div>
               <div style={{ background: "rgba(200,100,160,0.08)", borderRadius: "12px", padding: "14px 16px", marginBottom: "20px", border: "1px solid rgba(200,100,160,0.15)" }}>
@@ -383,6 +576,7 @@ export default function EyebrowAgent() {
             </div>
           )}
 
+          {/* ── GENERATING ── */}
           {step === STEPS.GENERATING && (
             <div style={{ textAlign: "center", padding: "40px 0" }}>
               <div style={{ fontSize: "52px", marginBottom: "20px" }}>🪄</div>
@@ -396,6 +590,7 @@ export default function EyebrowAgent() {
             </div>
           )}
 
+          {/* ── RESULT ── */}
           {step === STEPS.RESULT && resultImage && (
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
