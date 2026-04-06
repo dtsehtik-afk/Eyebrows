@@ -1,5 +1,33 @@
 import { useState, useRef, useEffect } from "react";
 
+// Create a black mask with white over the eyebrow area
+function createBrowMask(imageBase64, browBox) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      // Black = keep unchanged
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // White = regenerate (eyebrow area)
+      ctx.fillStyle = "white";
+      const x = browBox.x * img.width;
+      const y = browBox.y * img.height;
+      const w = browBox.w * img.width;
+      const h = browBox.h * img.height;
+      const r = Math.min(w, h) * 0.35;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+      ctx.fill();
+      resolve(canvas.toDataURL("image/png").split(",")[1]);
+    };
+    img.src = `data:image/jpeg;base64,${imageBase64}`;
+  });
+}
+
 // Resize image to max 800px and compress before sending to API
 function resizeImage(base64, maxSize = 800, quality = 0.7) {
   return new Promise((resolve) => {
@@ -191,12 +219,18 @@ export default function EyebrowAgent() {
     setStep(STEPS.GENERATING);
     setError(null);
     try {
+      // Create eyebrow mask if coordinates available
+      const maskBase64 = recommendation.browBox
+        ? await createBrowMask(imageBase64, recommendation.browBox)
+        : null;
+
       // Submit job
       const submitRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageBase64,
+          maskBase64,
           prompt: `${recommendation.imagePrompt}, natural eyebrows only, keep face identical`,
         }),
       });

@@ -60,8 +60,11 @@ Return ONLY valid JSON, no extra text, no markdown:
   "asymmetryNote": "describe any left-right asymmetry, or 'symmetric' if balanced",
   "tips_he": ["טיפ 1", "טיפ 2", "טיפ 3"],
   "tips_en": ["tip 1", "tip 2", "tip 3"],
-  "imagePrompt": "Precise FLUX instruction: describe exact eyebrow thickness (thin/medium/thick), arch height (low/medium/high), arch peak position (above outer iris / above pupil), tail direction (slightly downward / flat / upward), brow color and gradient, texture (defined/feathered/powdery), start and end points relative to the eye corners. Be very specific about shape geometry."
-}`
+  "imagePrompt": "Precise FLUX instruction: describe exact eyebrow thickness (thin/medium/thick), arch height (low/medium/high), arch peak position (above outer iris / above pupil), tail direction (slightly downward / flat / upward), brow color and gradient, texture (defined/feathered/powdery), start and end points relative to the eye corners. Be very specific about shape geometry.",
+  "browBox": {"x": 0.10, "y": 0.28, "w": 0.80, "h": 0.14}
+}
+
+IMPORTANT for browBox: estimate the bounding box that covers BOTH eyebrows together as fractions of image dimensions (0.0–1.0). x=left edge, y=top edge, w=width, h=height. Include ~20% padding around the brows. Typical values: y around 0.25–0.40, h around 0.10–0.18.`
               }
             ]
           }],
