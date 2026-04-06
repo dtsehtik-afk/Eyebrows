@@ -198,6 +198,14 @@ const T = {
     leadSkip: "דלגי",
     shareBtn: "📤 שתפי את התוצאה",
     closeLightbox: "✕",
+    sendOtpBtn: "שלחי קוד אימות בווצאפ",
+    otpSent: "קוד נשלח לווצאפ שלך!",
+    otpPlaceholder: "הכניסי את הקוד בן 6 ספרות",
+    otpVerifyBtn: "אמתי ✓",
+    otpResend: "שלחי שוב",
+    otpExpired: "הקוד פג תוקף, שלחי שוב",
+    otpInvalid: "קוד שגוי, נסי שוב",
+    otpError: "שגיאה בשליחה, נסי שוב",
     errorAnalyze: "שגיאה בניתוח התמונה. נסי שנית.",
     errorGenerate: "שגיאה ביצירת ההדמיה. נסי שנית.",
     cameraError: "לא ניתן לגשת למצלמה. בדקי הרשאות.",
@@ -246,6 +254,14 @@ const T = {
     leadSkip: "Skip",
     shareBtn: "📤 Share Result",
     closeLightbox: "✕",
+    sendOtpBtn: "Send WhatsApp Verification Code",
+    otpSent: "Code sent to your WhatsApp!",
+    otpPlaceholder: "Enter 6-digit code",
+    otpVerifyBtn: "Verify ✓",
+    otpResend: "Resend",
+    otpExpired: "Code expired, please resend",
+    otpInvalid: "Wrong code, please try again",
+    otpError: "Send error, please try again",
     errorAnalyze: "Error analyzing image. Please try again.",
     errorGenerate: "Error generating simulation. Please try again.",
     cameraError: "Cannot access camera. Please check permissions.",
@@ -297,6 +313,9 @@ export default function EyebrowAgent() {
   const [error, setError] = useState(null);
   const [leadName, setLeadName] = useState("");
   const [leadPhone, setLeadPhone] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpToken, setOtpToken] = useState(null);
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [flashVisible, setFlashVisible] = useState(false);
 
@@ -510,20 +529,55 @@ export default function EyebrowAgent() {
     }
   };
 
-  const submitLead = async () => {
-    const name = leadName.trim();
+  const sendOtp = async () => {
     const phone = leadPhone.trim();
+    const name = leadName.trim();
     if (!name || !phone) {
       setError(lang === "he" ? "נא למלא שם וטלפון להמשך" : "Please fill in your name and phone to continue");
       return;
     }
     setError(null);
-    fetch("https://script.google.com/macros/s/AKfycbwy5TpwXtWXNzaPTO4SJd9r8-qghbvMNksjAckl6EjnQBj1bs10Lvg1EZ1bc7MIBfN-Lg/exec", {
-      method: "POST",
-      body: JSON.stringify({ name, phone }),
-    }).catch(() => {});
-    generateWithGemini();
+    try {
+      const res = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error();
+      setOtpToken(data.token);
+      setOtpSent(true);
+      setOtpCode("");
+    } catch {
+      setError(t.otpError);
+    }
   };
+
+  const verifyOtp = async () => {
+    setError(null);
+    try {
+      const res = await fetch("/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: leadPhone.trim(), otp: otpCode, token: otpToken }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.error === "expired" ? t.otpExpired : t.otpInvalid);
+        return;
+      }
+      // Verified — save lead and generate
+      fetch("https://script.google.com/macros/s/AKfycbwy5TpwXtWXNzaPTO4SJd9r8-qghbvMNksjAckl6EjnQBj1bs10Lvg1EZ1bc7MIBfN-Lg/exec", {
+        method: "POST",
+        body: JSON.stringify({ name: leadName.trim(), phone: leadPhone.trim() }),
+      }).catch(() => {});
+      generateWithGemini();
+    } catch {
+      setError(t.otpInvalid);
+    }
+  };
+
+  const submitLead = sendOtp;
 
   const shareResult = async () => {
     try {
@@ -622,6 +676,7 @@ export default function EyebrowAgent() {
     stopCamera(); setStep(STEPS.UPLOAD);
     setImage(null); setImageBase64(null); setRawBase64(null);
     setRecommendation(null); setResultImage(null); setError(null);
+    setLeadName(""); setLeadPhone(""); setOtpSent(false); setOtpCode(""); setOtpToken(null);
     setTransform({ x: 0, y: 0, scale: 1 });
   };
 
@@ -843,7 +898,25 @@ export default function EyebrowAgent() {
                   style={{ width: "100%", padding: "14px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "12px", color: "#f0d4e8", fontSize: "15px", outline: "none", boxSizing: "border-box", direction: "ltr" }}
                 />
               </div>
-              <button onClick={submitLead} style={btnPrimary}>{t.leadBtn}</button>
+              {!otpSent ? (
+                <button onClick={sendOtp} style={btnPrimary}>{t.sendOtpBtn}</button>
+              ) : (
+                <div>
+                  <p style={{ color: "#c4a0b8", fontSize: "13px", textAlign: "center", margin: "0 0 12px" }}>
+                    💬 {t.otpSent}
+                  </p>
+                  <input
+                    type="number"
+                    placeholder={t.otpPlaceholder}
+                    value={otpCode}
+                    onChange={e => setOtpCode(e.target.value)}
+                    maxLength={6}
+                    style={{ width: "100%", padding: "14px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(200,100,160,0.4)", borderRadius: "12px", color: "#f0d4e8", fontSize: "20px", outline: "none", boxSizing: "border-box", textAlign: "center", letterSpacing: "6px", marginBottom: "12px" }}
+                  />
+                  <button onClick={verifyOtp} style={btnPrimary}>{t.otpVerifyBtn}</button>
+                  <button onClick={() => { setOtpSent(false); setOtpCode(""); }} style={btnGhost}>{t.otpResend}</button>
+                </div>
+              )}
             </div>
           )}
 
