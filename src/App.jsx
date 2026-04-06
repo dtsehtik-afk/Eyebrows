@@ -518,15 +518,9 @@ export default function EyebrowAgent() {
       return;
     }
     setError(null);
-    fetch("/api/lead", {
+    fetch("https://script.google.com/macros/s/AKfycbwy5TpwXtWXNzaPTO4SJd9r8-qghbvMNksjAckl6EjnQBj1bs10Lvg1EZ1bc7MIBfN-Lg/exec", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        phone,
-        style: recommendation?.recommendedStyle || "",
-        faceShape: lang === "he" ? recommendation?.faceShapeHebrew : recommendation?.faceShapeEnglish,
-      }),
+      body: JSON.stringify({ name, phone }),
     }).catch(() => {});
     generateWithGemini();
   };
