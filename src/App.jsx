@@ -16,6 +16,34 @@ function resizeImage(base64, maxSize = 1024, quality = 0.85) {
   });
 }
 
+// Fixed oval mask covering the eye+brow area (no face detection needed)
+function createEyeMask(imageBase64) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // White oval centered at ~33% height (brow+eye area in typical selfie)
+      const cx = canvas.width * 0.5;
+      const cy = canvas.height * 0.33;
+      const rx = canvas.width * 0.44;
+      const ry = canvas.height * 0.10;
+      ctx.filter = `blur(${Math.round(canvas.height * 0.025)}px)`;
+      ctx.fillStyle = "white";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.filter = "none";
+      resolve(canvas.toDataURL("image/png").split(",")[1]);
+    };
+    img.src = `data:image/jpeg;base64,${imageBase64}`;
+  });
+}
+
 const T = {
   he: {
     title: "ייעוץ גבות חכם",
@@ -40,7 +68,7 @@ const T = {
     generateBtn: "🪄 צרי לי הדמיה!",
     bookBtn: "📅 קבעי ייעוץ חינם עם המומחית",
     generatingTitle: "יוצרת את ההדמיה...",
-    generatingSubtitle: "Gemini מצייר את הגבות שלך ✨",
+    generatingSubtitle: "מכינה לך את הגבות המושלמות ✨",
     before: "לפני",
     after: "אחרי ✨",
     loveIt: "אוהבת את מה שרואה? 😍",
@@ -77,7 +105,7 @@ const T = {
     generateBtn: "🪄 Generate My Simulation!",
     bookBtn: "📅 Book a Free Consultation",
     generatingTitle: "Creating your simulation...",
-    generatingSubtitle: "Gemini is drawing your brows ✨",
+    generatingSubtitle: "Creating your perfect brows ✨",
     before: "Before",
     after: "After ✨",
     loveIt: "Love what you see? 😍",
@@ -171,18 +199,36 @@ export default function EyebrowAgent() {
     }
   };
 
-  const generateWithGemini = async () => {
+  const generateWithFal = async () => {
     setStep(STEPS.GENERATING); setError(null);
     try {
-      const res = await fetch("/api/edit", {
+      const maskBase64 = await createEyeMask(imageBase64);
+
+      const submitRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, prompt: recommendation.imagePrompt }),
+        body: JSON.stringify({
+          imageBase64,
+          maskBase64,
+          prompt: recommendation.imagePrompt,
+        }),
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResultImage(`data:${data.mimeType};base64,${data.imageBase64}`);
-      setStep(STEPS.RESULT);
+      const submitData = await submitRes.json();
+      if (submitData.error) throw new Error(submitData.error);
+      const { status_url, response_url } = submitData;
+
+      const pollParams = new URLSearchParams({ status_url, response_url });
+      for (let i = 0; i < 100; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pollRes = await fetch(`/api/poll?${pollParams}`);
+        const pd = await pollRes.json();
+        if (pd.error) throw new Error(pd.error);
+        if (pd.status === "COMPLETED") {
+          if (pd.imageUrl) { setResultImage(pd.imageUrl); setStep(STEPS.RESULT); return; }
+          throw new Error("Completed but no imageUrl");
+        }
+      }
+      throw new Error("Generation timed out");
     } catch (err) {
       setError(err.message || t.errorGenerate);
       setStep(STEPS.RECOMMENDATION);
@@ -332,7 +378,7 @@ export default function EyebrowAgent() {
                 ))}
               </div>
 
-              <button onClick={generateWithGemini} style={btnPrimary}>{t.generateBtn}</button>
+              <button onClick={generateWithFal} style={btnPrimary}>{t.generateBtn}</button>
               <button onClick={() => alert(t.consultAlert)} style={btnSecondary}>{t.bookBtn}</button>
             </div>
           )}
@@ -374,7 +420,6 @@ export default function EyebrowAgent() {
           )}
 
         </div>
-
         <p style={{ textAlign: "center", color: "#5a3850", fontSize: "12px", marginTop: "16px" }}>{t.privacy}</p>
       </div>
     </div>

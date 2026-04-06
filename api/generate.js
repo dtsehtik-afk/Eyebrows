@@ -13,36 +13,19 @@ export default async function handler(req) {
   }
 
   try {
-    const { imageBase64, prompt, maskBase64 } = await req.json();
+    const { imageBase64, maskBase64, prompt } = await req.json();
 
-    const useInpainting = !!maskBase64;
-    const endpoint = useInpainting
-      ? "https://queue.fal.run/fal-ai/flux-pro/v1/fill"
-      : "https://queue.fal.run/fal-ai/flux/dev/image-to-image";
-
-    const requestBody = useInpainting
-      ? {
-          image_url: `data:image/jpeg;base64,${imageBase64}`,
-          mask_url: `data:image/png;base64,${maskBase64}`,
-          prompt: `${prompt}. Perfectly groomed eyebrows only. Same skin tone, same age, same smooth skin, same lighting, photorealistic beauty portrait.`,
-          negative_prompt: "wrinkles, skin texture, forehead lines, aged, old, different skin, blemishes, makeup, change face",
-          num_inference_steps: 40,
-          guidance_scale: 10,
-        }
-      : {
-          image_url: `data:image/jpeg;base64,${imageBase64}`,
-          prompt: `ONLY the eyebrows are modified, everything else remains identical: ${prompt}. Same person, same face, same skin, same lighting. Photorealistic beauty portrait.`,
-          negative_prompt: "different person, changed face, altered skin, blurry, deformed, cartoon",
-          strength: 0.38,
-          num_inference_steps: 35,
-          guidance_scale: 9,
-          num_images: 1,
-        };
-
-    const submitRes = await fetch(endpoint, {
+    const submitRes = await fetch("https://queue.fal.run/fal-ai/flux-pro/v1/fill", {
       method: "POST",
       headers: { "Authorization": `Key ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({
+        image_url: `data:image/jpeg;base64,${imageBase64}`,
+        mask_url: `data:image/png;base64,${maskBase64}`,
+        prompt: `${prompt}. Perfectly shaped eyebrows, natural eye makeup, photorealistic beauty portrait, same person same age same skin tone same lighting.`,
+        negative_prompt: "wrinkles, forehead lines, aged, old, different person, different skin, blurry, deformed",
+        num_inference_steps: 35,
+        guidance_scale: 10,
+      }),
     });
 
     const submitData = await submitRes.json();
@@ -52,7 +35,6 @@ export default async function handler(req) {
       });
     }
 
-    // Return the exact URLs fal.ai gave us
     return new Response(JSON.stringify({
       request_id: submitData.request_id,
       status_url: submitData.status_url,
