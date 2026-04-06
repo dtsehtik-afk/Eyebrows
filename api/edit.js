@@ -43,7 +43,10 @@ export default async function handler(req) {
   }
 
   const parts = data.candidates?.[0]?.content?.parts || [];
-  const imagePart = parts.find(p => p.inline_data?.mime_type?.startsWith("image/"));
+  const imagePart = parts.find(p =>
+    p.inlineData?.mimeType?.startsWith("image/") ||
+    p.inline_data?.mime_type?.startsWith("image/")
+  );
 
   if (!imagePart) {
     const textPart = parts.find(p => p.text)?.text || "";
@@ -52,8 +55,9 @@ export default async function handler(req) {
     }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
 
+  const imgData = imagePart.inlineData || imagePart.inline_data;
   return new Response(JSON.stringify({
-    imageBase64: imagePart.inline_data.data,
-    mimeType: imagePart.inline_data.mime_type,
+    imageBase64: imgData.data,
+    mimeType: imgData.mimeType || imgData.mime_type,
   }), { headers: { "Content-Type": "application/json" } });
 }
