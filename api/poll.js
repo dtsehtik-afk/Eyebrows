@@ -41,7 +41,15 @@ export default async function handler(req) {
       result.images?.[0]?.url ||
       result.image?.url ||
       result.output?.images?.[0]?.url ||
-      result.output?.image?.url;
+      result.output?.image?.url ||
+      result.response?.images?.[0]?.url ||
+      result.response?.image?.url;
+
+    if (!imageUrl) {
+      return new Response(JSON.stringify({ error: `Completed but no imageUrl. Raw: ${JSON.stringify(result).slice(0, 500)}` }), {
+        status: 500, headers: { "Content-Type": "application/json" },
+      });
+    }
 
     return new Response(JSON.stringify({ status: "COMPLETED", imageUrl }), {
       headers: { "Content-Type": "application/json" },
