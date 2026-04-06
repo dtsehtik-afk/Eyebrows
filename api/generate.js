@@ -26,7 +26,7 @@ export default async function handler(req) {
           mask_url: `data:image/png;base64,${maskBase64}`,
           prompt: `${prompt}. Photorealistic, same lighting, natural beauty.`,
           num_inference_steps: 28,
-          guidance_scale: 30,
+          guidance_scale: 10,
         }
       : {
           image_url: `data:image/jpeg;base64,${imageBase64}`,
