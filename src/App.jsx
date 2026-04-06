@@ -1,38 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 
-// Create a black mask with white over the eyebrow area
-function createBrowMask(imageBase64, browBox) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      // Black = keep unchanged
-      ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      // White = regenerate (eyebrow area)
-      ctx.fillStyle = "white";
-      const padding = 0.015;
-      const x = (browBox.x + padding) * img.width;
-      const y = (browBox.y + padding) * img.height;
-      const w = (browBox.w - padding * 2) * img.width;
-      const h = (browBox.h - padding) * img.height;
-      const r = Math.min(w, h) * 0.35;
-      // Feathered edges — blur creates natural blending with surrounding skin
-      const blurPx = Math.round(h * 0.25);
-      ctx.filter = `blur(${blurPx}px)`;
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, r);
-      ctx.fill();
-      ctx.filter = "none";
-      resolve(canvas.toDataURL("image/png").split(",")[1]);
-    };
-    img.src = `data:image/jpeg;base64,${imageBase64}`;
-  });
-}
-
 // Resize image to max 1024px and compress before sending to API
 function resizeImage(base64, maxSize = 1024, quality = 0.85) {
   return new Promise((resolve) => {
@@ -49,6 +16,235 @@ function resizeImage(base64, maxSize = 1024, quality = 0.85) {
     };
     img.src = `data:image/jpeg;base64,${base64}`;
   });
+}
+
+// ─── Eyebrow style definitions ────────────────────────────────────────────────
+// spine: normalized points along the brow
+//   x: 0 = inner corner (near nose), 1 = outer corner (near ear)
+//   y: 0 = top of browBox, 1 = bottom of browBox
+//   t: thickness as fraction of browBox height at this point
+const BROW_STYLES = [
+  {
+    id: "natural", name_he: "טבעי", name_en: "Natural",
+    spine: [
+      { x: 0, y: 0.72, t: 0.16 },
+      { x: 0.22, y: 0.38, t: 0.30 },
+      { x: 0.52, y: 0.24, t: 0.32 },
+      { x: 0.78, y: 0.32, t: 0.22 },
+      { x: 1,    y: 0.56, t: 0.10 },
+    ],
+  },
+  {
+    id: "highArch", name_he: "קשת גבוהה", name_en: "High Arch",
+    spine: [
+      { x: 0, y: 0.78, t: 0.14 },
+      { x: 0.20, y: 0.50, t: 0.26 },
+      { x: 0.44, y: 0.14, t: 0.30 },
+      { x: 0.70, y: 0.26, t: 0.20 },
+      { x: 1,    y: 0.62, t: 0.09 },
+    ],
+  },
+  {
+    id: "straight", name_he: "ישר ומלא", name_en: "Straight & Full",
+    spine: [
+      { x: 0, y: 0.58, t: 0.24 },
+      { x: 0.25, y: 0.40, t: 0.38 },
+      { x: 0.55, y: 0.36, t: 0.38 },
+      { x: 0.80, y: 0.40, t: 0.28 },
+      { x: 1,    y: 0.58, t: 0.14 },
+    ],
+  },
+  {
+    id: "thin", name_he: "דק ומוגדר", name_en: "Thin & Defined",
+    spine: [
+      { x: 0, y: 0.72, t: 0.09 },
+      { x: 0.25, y: 0.42, t: 0.16 },
+      { x: 0.55, y: 0.28, t: 0.17 },
+      { x: 0.80, y: 0.36, t: 0.13 },
+      { x: 1,    y: 0.62, t: 0.06 },
+    ],
+  },
+  {
+    id: "bold", name_he: "בולד ודרמטי", name_en: "Bold & Dramatic",
+    spine: [
+      { x: 0, y: 0.74, t: 0.18 },
+      { x: 0.18, y: 0.46, t: 0.36 },
+      { x: 0.42, y: 0.16, t: 0.42 },
+      { x: 0.66, y: 0.24, t: 0.32 },
+      { x: 1,    y: 0.65, t: 0.12 },
+    ],
+  },
+  {
+    id: "softFull", name_he: "רך ועגול", name_en: "Soft & Round",
+    spine: [
+      { x: 0, y: 0.68, t: 0.20 },
+      { x: 0.22, y: 0.34, t: 0.34 },
+      { x: 0.50, y: 0.22, t: 0.36 },
+      { x: 0.76, y: 0.30, t: 0.28 },
+      { x: 1,    y: 0.55, t: 0.13 },
+    ],
+  },
+];
+
+const BROW_COLORS = [
+  { label_he: "שחור",      label_en: "Black",        hex: "#18100a" },
+  { label_he: "חום כהה",   label_en: "Dark Brown",   hex: "#3b1f0a" },
+  { label_he: "חום בינוני",label_en: "Medium Brown",  hex: "#6b3d1a" },
+  { label_he: "חום בהיר",  label_en: "Light Brown",   hex: "#9b6240" },
+  { label_he: "טאופ",      label_en: "Taupe",         hex: "#7a6858" },
+];
+
+// ─── Canvas eyebrow application ───────────────────────────────────────────────
+function applyEyebrowStyle(imageBase64, browBox, styleIndex, colorHex) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = reject;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+
+      // Use a fallback browBox if Gemini didn't return one
+      const box = browBox || { x: 0.10, y: 0.28, w: 0.80, h: 0.14 };
+      const bx = box.x * img.width;
+      const by = box.y * img.height;
+      const bw = box.w * img.width;
+      const bh = box.h * img.height;
+
+      // Sample skin color from the forehead (area above the brows)
+      const sampleY = Math.max(0, Math.round(by - bh * 0.6));
+      const sampleH = Math.max(4, Math.round(bh * 0.35));
+      const skinData = ctx.getImageData(Math.round(bx + bw * 0.15), sampleY, Math.round(bw * 0.7), sampleH);
+      let sr = 0, sg = 0, sb = 0;
+      for (let i = 0; i < skinData.data.length; i += 4) {
+        sr += skinData.data[i];
+        sg += skinData.data[i + 1];
+        sb += skinData.data[i + 2];
+      }
+      const n = skinData.data.length / 4;
+      const skinColor = `rgb(${Math.round(sr / n)},${Math.round(sg / n)},${Math.round(sb / n)})`;
+
+      // Cover original brows with blurred skin patch
+      ctx.save();
+      ctx.filter = `blur(${Math.round(bh * 0.35)}px)`;
+      ctx.fillStyle = skinColor;
+      ctx.fillRect(bx - bh * 0.3, by - bh * 0.15, bw + bh * 0.6, bh + bh * 0.3);
+      ctx.filter = "none";
+      ctx.restore();
+
+      const style = BROW_STYLES[styleIndex] || BROW_STYLES[0];
+      const gap = bw * 0.05;
+      const halfW = (bw - gap) / 2;
+
+      // Right brow (person's right = left side of image)
+      drawBrowShape(ctx, bx, by, halfW, bh, style.spine, colorHex, false);
+      // Left brow (person's left = right side of image, mirrored)
+      drawBrowShape(ctx, bx + halfW + gap, by, halfW, bh, style.spine, colorHex, true);
+
+      resolve(canvas.toDataURL("image/jpeg", 0.93));
+    };
+    img.src = `data:image/jpeg;base64,${imageBase64}`;
+  });
+}
+
+function drawBrowShape(ctx, x, y, w, h, spine, colorHex, flip) {
+  const r = parseInt(colorHex.slice(1, 3), 16);
+  const g = parseInt(colorHex.slice(3, 5), 16);
+  const b = parseInt(colorHex.slice(5, 7), 16);
+
+  // Build top and bottom edge points of the brow
+  const top = spine.map(p => ({
+    x: x + (flip ? 1 - p.x : p.x) * w,
+    y: y + (p.y - p.t / 2) * h,
+  }));
+  const bottom = spine.map(p => ({
+    x: x + (flip ? 1 - p.x : p.x) * w,
+    y: y + (p.y + p.t / 2) * h,
+  })).reverse();
+
+  // Soft glow / blur layer for feathered edges
+  ctx.save();
+  ctx.filter = `blur(${Math.round(h * 0.1)}px)`;
+  ctx.beginPath();
+  drawSmoothPath(ctx, [...top, ...bottom]);
+  ctx.fillStyle = `rgba(${r},${g},${b},0.55)`;
+  ctx.fill();
+  ctx.filter = "none";
+  ctx.restore();
+
+  // Main filled shape
+  ctx.save();
+  ctx.beginPath();
+  drawSmoothPath(ctx, [...top, ...bottom]);
+  ctx.fillStyle = `rgba(${r},${g},${b},0.80)`;
+  ctx.fill();
+  ctx.restore();
+
+  // Hair texture layer
+  drawHairTexture(ctx, x, y, w, h, spine, r, g, b, flip);
+}
+
+function drawSmoothPath(ctx, pts) {
+  if (pts.length < 2) return;
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i].x + pts[i + 1].x) / 2;
+    const my = (pts[i].y + pts[i + 1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  }
+  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+  ctx.closePath();
+}
+
+function drawHairTexture(ctx, x, y, w, h, spine, r, g, b, flip) {
+  const numStrokes = Math.round(w * 2.0);
+  ctx.lineCap = "round";
+
+  for (let i = 0; i < numStrokes; i++) {
+    const t = (i + Math.random() * 0.6 - 0.3) / numStrokes;
+    const ct = Math.max(0, Math.min(1, t));
+
+    // Interpolate spine position
+    const si = ct * (spine.length - 1);
+    const si0 = Math.min(Math.floor(si), spine.length - 2);
+    const f = si - si0;
+    const s0 = spine[si0], s1 = spine[si0 + 1];
+
+    const sxNorm = s0.x + (s1.x - s0.x) * f;
+    const syNorm = s0.y + (s1.y - s0.y) * f;
+    const stNorm = s0.t + (s1.t - s0.t) * f;
+
+    const px = x + (flip ? 1 - sxNorm : sxNorm) * w;
+    const py = y + syNorm * h;
+    const thick = stNorm * h;
+
+    // Edge fade: thinner at inner/outer corners
+    const innerFade = Math.min(ct * 7, 1);
+    const outerFade = Math.min((1 - ct) * 9, 1);
+    const edgeFade = innerFade * outerFade;
+    const opacity = (0.25 + Math.random() * 0.45) * edgeFade;
+
+    // Hair angle: more vertical at inner corner, more diagonal at outer
+    const innerT = flip ? 1 - ct : ct;
+    const baseAngle = -(Math.PI / 2) + innerT * 0.45;
+    const angle = baseAngle + (Math.random() - 0.5) * 0.28;
+    const hairLen = thick * (0.65 + Math.random() * 0.65);
+
+    const startX = px + (Math.random() - 0.5) * thick * 0.5;
+    const startY = py + thick * 0.45 * (0.3 + Math.random() * 0.5);
+
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(${r},${g},${b},${opacity.toFixed(2)})`;
+    ctx.lineWidth = 0.35 + Math.random() * 0.65;
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(
+      startX + Math.cos(angle) * hairLen * 0.25,
+      startY + Math.sin(angle) * hairLen,
+    );
+    ctx.stroke();
+  }
 }
 
 // ─── i18n ────────────────────────────────────────────────────────────────────
@@ -73,11 +269,12 @@ const T = {
     recommendedTitle: "🎨 עיצוב מומלץ:",
     colorLabel: "גוון מומלץ:",
     tipsTitle: "💡 טיפים אישיים:",
-    apiLabel: "הכניסי את מפתח fal.ai שלך:",
-    generateBtn: "🪄 צרי לי הדמיה!",
+    stylesTitle: "בחרי סגנון גבה:",
+    colorPickerTitle: "גוון:",
+    applyBtn: "✨ הדמיה מיידית!",
     bookBtn: "📅 קבעי ייעוץ חינם עם המומחית",
-    generatingTitle: "יוצרת את ההדמיה...",
-    generatingSubtitle: "מכינה לך את הגבות המושלמות ✨",
+    applyingTitle: "מחילה את הסגנון...",
+    applyingSubtitle: "שנייה אחת ✨",
     before: "לפני",
     after: "אחרי ✨",
     loveIt: "אוהבת את מה שרואה? 😍",
@@ -88,7 +285,7 @@ const T = {
     bookAlert: "מעולה! נציגה שלנו תחזור אלייך בהקדם 💕",
     consultAlert: "נשלחה בקשה לתיאום ייעוץ! נחזור אלייך בקרוב 💕",
     errorAnalyze: "שגיאה בניתוח התמונה. נסי שנית.",
-    errorGenerate: "שגיאה ביצירת ההדמיה. בדקי את מפתח ה-API.",
+    errorGenerate: "שגיאה ביצירת ההדמיה. נסי שנית.",
     cameraError: "לא ניתן לגשת למצלמה. בדקי הרשאות.",
   },
   en: {
@@ -111,11 +308,12 @@ const T = {
     recommendedTitle: "🎨 Recommended Style:",
     colorLabel: "Recommended Shade:",
     tipsTitle: "💡 Personal Tips:",
-    apiLabel: "Enter your fal.ai API key:",
-    generateBtn: "🪄 Generate My Simulation!",
+    stylesTitle: "Choose a brow style:",
+    colorPickerTitle: "Color:",
+    applyBtn: "✨ Instant Simulation!",
     bookBtn: "📅 Book a Free Consultation",
-    generatingTitle: "Generating your simulation...",
-    generatingSubtitle: "Creating your perfect brows ✨",
+    applyingTitle: "Applying style...",
+    applyingSubtitle: "One moment ✨",
     before: "Before",
     after: "After ✨",
     loveIt: "Love what you see? 😍",
@@ -126,7 +324,7 @@ const T = {
     bookAlert: "Great! Our specialist will get back to you shortly 💕",
     consultAlert: "Consultation request sent! We'll be in touch soon 💕",
     errorAnalyze: "Error analyzing image. Please try again.",
-    errorGenerate: "Error generating simulation. Check your API key.",
+    errorGenerate: "Error generating simulation. Please try again.",
     cameraError: "Cannot access camera. Please check permissions.",
   },
 };
@@ -147,8 +345,10 @@ export default function EyebrowAgent() {
   const [imageBase64, setImageBase64] = useState(null);
   const [recommendation, setRecommendation] = useState(null);
   const [resultImage, setResultImage] = useState(null);
-
+  const [selectedStyle, setSelectedStyle] = useState(0);
+  const [selectedColor, setSelectedColor] = useState(BROW_COLORS[1]);
   const [error, setError] = useState(null);
+
   const fileRef = useRef();
   const videoRef = useRef();
   const canvasRef = useRef();
@@ -220,49 +420,20 @@ export default function EyebrowAgent() {
     }
   };
 
-  const generateWithFal = async () => {
+  const applyBrowStyle = async () => {
     setStep(STEPS.GENERATING);
     setError(null);
     try {
-      // Create eyebrow mask if coordinates available
-      const maskBase64 = recommendation.browBox
-        ? await createBrowMask(imageBase64, recommendation.browBox)
-        : null;
-
-      // Submit job
-      const submitRes = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64,
-          maskBase64,
-          prompt: `${recommendation.imagePrompt}, natural eyebrows only, keep face identical`,
-        }),
-      });
-      const submitData = await submitRes.json();
-      if (submitData.error) throw new Error(submitData.error);
-      const { status_url, response_url } = submitData;
-
-      // Poll for result — up to 5 minutes
-      const pollParams = new URLSearchParams({ status_url, response_url });
-      for (let i = 0; i < 100; i++) {
-        await new Promise(r => setTimeout(r, 3000));
-        const pollRes = await fetch(`/api/poll?${pollParams}`);
-        const pd = await pollRes.json();
-        if (pd.error) throw new Error(pd.error);
-        if (pd.status === "COMPLETED") {
-          if (pd.imageUrl) {
-            setResultImage(pd.imageUrl);
-            setStep(STEPS.RESULT);
-            return;
-          } else {
-            throw new Error("Completed but no imageUrl");
-          }
-        }
-      }
-      throw new Error("Generation timed out after 5 minutes");
+      const resultDataUrl = await applyEyebrowStyle(
+        imageBase64,
+        recommendation?.browBox,
+        selectedStyle,
+        selectedColor.hex,
+      );
+      setResultImage(resultDataUrl);
+      setStep(STEPS.RESULT);
     } catch (err) {
-      console.error("Generate error:", err);
+      console.error("Apply error:", err);
       setError(err.message || t.errorGenerate);
       setStep(STEPS.RECOMMENDATION);
     }
@@ -275,14 +446,18 @@ export default function EyebrowAgent() {
     setImageBase64(null);
     setRecommendation(null);
     setResultImage(null);
+    setSelectedStyle(0);
+    setSelectedColor(BROW_COLORS[1]);
     setError(null);
   };
 
-  // progress mapping
-  const progressMap = { [STEPS.UPLOAD]: 0, [STEPS.CAMERA]: 0, [STEPS.ANALYZING]: 1, [STEPS.RECOMMENDATION]: 2, [STEPS.GENERATING]: 3, [STEPS.RESULT]: 3 };
+  const progressMap = {
+    [STEPS.UPLOAD]: 0, [STEPS.CAMERA]: 0,
+    [STEPS.ANALYZING]: 1, [STEPS.RECOMMENDATION]: 2,
+    [STEPS.GENERATING]: 3, [STEPS.RESULT]: 3,
+  };
   const progressIndex = progressMap[step] ?? 0;
 
-  // shared styles
   const btnPrimary = { width: "100%", padding: "15px", background: "linear-gradient(135deg,#e8a0c8,#c060a0)", border: "none", borderRadius: "12px", color: "white", fontSize: "15px", fontWeight: "700", cursor: "pointer", marginBottom: "10px", display: "block" };
   const btnSecondary = { width: "100%", padding: "13px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(200,100,160,0.25)", borderRadius: "12px", color: "#e8a0c8", fontSize: "14px", fontWeight: "600", cursor: "pointer", marginBottom: "10px", display: "block" };
   const btnGhost = { width: "100%", padding: "12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", color: "#c4a0b8", fontSize: "13px", cursor: "pointer", display: "block" };
@@ -306,7 +481,7 @@ export default function EyebrowAgent() {
           <p style={{ color: "#c4a0b8", fontSize: "14px", margin: 0 }}>{t.subtitle}</p>
         </div>
 
-        {/* Progress bar */}
+        {/* Progress */}
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "4px", marginBottom: "24px" }}>
           {t.steps.map((label, i) => {
             const active = i <= progressIndex;
@@ -326,7 +501,7 @@ export default function EyebrowAgent() {
           })}
         </div>
 
-        {/* Main card */}
+        {/* Card */}
         <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: "20px", border: "1px solid rgba(200,100,160,0.2)", padding: "28px", backdropFilter: "blur(10px)" }}>
 
           {error && (
@@ -340,7 +515,6 @@ export default function EyebrowAgent() {
             <div>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleFileUpload} style={{ display: "none" }} />
               <canvas ref={canvasRef} style={{ display: "none" }} />
-
               {!image ? (
                 <>
                   <p style={{ color: "#c4a0b8", fontSize: "14px", textAlign: "center", margin: "0 0 20px", fontWeight: "600" }}>{t.uploadTitle}</p>
@@ -385,7 +559,7 @@ export default function EyebrowAgent() {
           {/* ── RECOMMENDATION ── */}
           {step === STEPS.RECOMMENDATION && recommendation && (
             <div>
-              {/* Summary chip */}
+              {/* Face info chip */}
               <div style={{ background: "rgba(200,100,160,0.08)", borderRadius: "12px", padding: "14px 16px", marginBottom: "20px", border: "1px solid rgba(200,100,160,0.15)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <span style={{ color: "#9a7088", fontSize: "12px" }}>{t.faceShape}</span>
@@ -409,17 +583,9 @@ export default function EyebrowAgent() {
                 {lang === "he" ? recommendation.recommendedStyleDesc_he : recommendation.recommendedStyleDesc_en}
               </p>
 
-              {/* Color */}
-              <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: "10px", padding: "12px", marginBottom: "18px" }}>
-                <p style={{ color: "#9a7088", fontSize: "11px", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{t.colorLabel}</p>
-                <p style={{ color: "#e8a0c8", fontSize: "14px", margin: 0, fontWeight: "600" }}>
-                  {lang === "he" ? recommendation.colorRecommendation_he : recommendation.colorRecommendation_en}
-                </p>
-              </div>
-
               {/* Tips */}
               <h3 style={{ color: "#f0d4e8", fontSize: "13px", margin: "0 0 10px", fontWeight: "600" }}>{t.tipsTitle}</h3>
-              <div style={{ marginBottom: "22px" }}>
+              <div style={{ marginBottom: "24px" }}>
                 {(lang === "he" ? recommendation.tips_he : recommendation.tips_en)?.map((tip, i) => (
                   <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
                     <span style={{ color: "#c060a0", flexShrink: 0 }}>•</span>
@@ -428,18 +594,49 @@ export default function EyebrowAgent() {
                 ))}
               </div>
 
+              {/* Style picker */}
+              <h3 style={{ color: "#f0d4e8", fontSize: "14px", margin: "0 0 12px", fontWeight: "700" }}>{t.stylesTitle}</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "16px" }}>
+                {BROW_STYLES.map((style, i) => (
+                  <button key={style.id} onClick={() => setSelectedStyle(i)}
+                    style={{
+                      padding: "10px 6px", borderRadius: "10px", cursor: "pointer", fontSize: "12px", fontWeight: "600",
+                      background: selectedStyle === i ? "rgba(200,100,160,0.25)" : "rgba(255,255,255,0.04)",
+                      border: selectedStyle === i ? "1.5px solid #c060a0" : "1px solid rgba(200,100,160,0.15)",
+                      color: selectedStyle === i ? "#f0d4e8" : "#9a7088",
+                      transition: "all 0.2s",
+                    }}>
+                    {lang === "he" ? style.name_he : style.name_en}
+                  </button>
+                ))}
+              </div>
 
-              <button onClick={generateWithFal} style={btnPrimary}>{t.generateBtn}</button>
+              {/* Color picker */}
+              <h3 style={{ color: "#f0d4e8", fontSize: "14px", margin: "0 0 10px", fontWeight: "700" }}>{t.colorPickerTitle}</h3>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "24px", flexWrap: "wrap" }}>
+                {BROW_COLORS.map((color) => (
+                  <button key={color.hex} onClick={() => setSelectedColor(color)}
+                    title={lang === "he" ? color.label_he : color.label_en}
+                    style={{
+                      width: "32px", height: "32px", borderRadius: "50%", cursor: "pointer",
+                      background: color.hex,
+                      border: selectedColor.hex === color.hex ? "3px solid #e8a0c8" : "2px solid rgba(255,255,255,0.15)",
+                      transition: "all 0.2s",
+                    }} />
+                ))}
+              </div>
+
+              <button onClick={applyBrowStyle} style={btnPrimary}>{t.applyBtn}</button>
               <button onClick={() => alert(t.consultAlert)} style={btnSecondary}>{t.bookBtn}</button>
             </div>
           )}
 
-          {/* ── GENERATING ── */}
+          {/* ── GENERATING (applying) ── */}
           {step === STEPS.GENERATING && (
             <div style={{ textAlign: "center", padding: "40px 0" }}>
               <div style={{ fontSize: "52px", marginBottom: "20px" }}>🪄</div>
-              <p style={{ color: "#f0d4e8", fontSize: "18px", fontWeight: "700", margin: "0 0 8px" }}>{t.generatingTitle}</p>
-              <p style={{ color: "#9a7088", fontSize: "14px", margin: "0 0 28px", animation: "pulse 1.5s ease-in-out infinite" }}>{t.generatingSubtitle}</p>
+              <p style={{ color: "#f0d4e8", fontSize: "18px", fontWeight: "700", margin: "0 0 8px" }}>{t.applyingTitle}</p>
+              <p style={{ color: "#9a7088", fontSize: "14px", margin: "0 0 28px", animation: "pulse 1.5s ease-in-out infinite" }}>{t.applyingSubtitle}</p>
               <div style={{ display: "flex", justifyContent: "center", gap: "8px" }}>
                 {[0, 1, 2].map(i => (
                   <div key={i} style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#c060a0", animation: `pulse 1.2s ease-in-out ${i * 0.25}s infinite` }} />
@@ -460,6 +657,33 @@ export default function EyebrowAgent() {
                   <p style={{ color: "#e8a0c8", fontSize: "12px", textAlign: "center", margin: "0 0 8px", fontWeight: "700" }}>{t.after}</p>
                   <img src={resultImage} style={{ width: "100%", borderRadius: "10px", aspectRatio: "1", objectFit: "cover", border: "2px solid rgba(200,100,160,0.5)" }} />
                 </div>
+              </div>
+
+              {/* Style switcher in result */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "6px", marginBottom: "12px" }}>
+                {BROW_STYLES.map((style, i) => (
+                  <button key={style.id}
+                    onClick={async () => { setSelectedStyle(i); setStep(STEPS.GENERATING); const r = await applyEyebrowStyle(imageBase64, recommendation?.browBox, i, selectedColor.hex); setResultImage(r); setStep(STEPS.RESULT); }}
+                    style={{
+                      padding: "8px 4px", borderRadius: "8px", cursor: "pointer", fontSize: "11px", fontWeight: "600",
+                      background: selectedStyle === i ? "rgba(200,100,160,0.25)" : "rgba(255,255,255,0.04)",
+                      border: selectedStyle === i ? "1.5px solid #c060a0" : "1px solid rgba(200,100,160,0.12)",
+                      color: selectedStyle === i ? "#f0d4e8" : "#7a5068",
+                    }}>
+                    {lang === "he" ? style.name_he : style.name_en}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "20px", justifyContent: "center" }}>
+                {BROW_COLORS.map((color) => (
+                  <button key={color.hex}
+                    onClick={async () => { setSelectedColor(color); setStep(STEPS.GENERATING); const r = await applyEyebrowStyle(imageBase64, recommendation?.browBox, selectedStyle, color.hex); setResultImage(r); setStep(STEPS.RESULT); }}
+                    style={{
+                      width: "28px", height: "28px", borderRadius: "50%", cursor: "pointer",
+                      background: color.hex,
+                      border: selectedColor.hex === color.hex ? "3px solid #e8a0c8" : "2px solid rgba(255,255,255,0.15)",
+                    }} />
+                ))}
               </div>
 
               <div style={{ background: "linear-gradient(135deg,rgba(200,100,160,0.1),rgba(200,100,160,0.05))", borderRadius: "12px", padding: "16px", marginBottom: "20px", textAlign: "center", border: "1px solid rgba(200,100,160,0.15)" }}>
