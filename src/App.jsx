@@ -464,6 +464,27 @@ export default function EyebrowAgent() {
     }
   };
 
+  const generateWithGemini = async () => {
+    setStep(STEPS.GENERATING); setError(null);
+    try {
+      const res = await fetch("/api/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          prompt: recommendation.imagePrompt || recommendation.recommendedStyle,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setResultImage(`data:${data.mimeType};base64,${data.imageBase64}`);
+      setStep(STEPS.RESULT);
+    } catch (err) {
+      setError(err.message || t.errorGenerate);
+      setStep(STEPS.RECOMMENDATION);
+    }
+  };
+
   const generateWithFal = async () => {
     setStep(STEPS.GENERATING); setError(null);
     try {
@@ -692,7 +713,7 @@ export default function EyebrowAgent() {
                 ))}
               </div>
 
-              <button onClick={generateWithCanvas} style={btnPrimary}>{t.generateBtn}</button>
+              <button onClick={generateWithGemini} style={btnPrimary}>{t.generateBtn}</button>
               <button onClick={() => alert(t.consultAlert)} style={btnSecondary}>{t.bookBtn}</button>
             </div>
           )}
