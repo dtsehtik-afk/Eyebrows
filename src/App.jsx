@@ -1,5 +1,114 @@
 import { useState, useRef, useEffect } from "react";
 
+// ─── Canvas eyebrow drawing ──────────────────────────────────────────────────
+
+function sampleBrowColor(ctx, W, H) {
+  // Sample skin just below the brow zone (~37% height, center strip)
+  const sx = Math.round(W * 0.42);
+  const sy = Math.round(H * 0.375);
+  const sw = Math.round(W * 0.16);
+  const data = ctx.getImageData(sx, sy, sw, 1).data;
+  let r = 0, g = 0, b = 0;
+  const n = sw;
+  for (let i = 0; i < n; i++) { r += data[i * 4]; g += data[i * 4 + 1]; b += data[i * 4 + 2]; }
+  r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+  // Darken to brow tone (multiply down toward dark brown)
+  return {
+    r: Math.round(r * 0.38),
+    g: Math.round(g * 0.27),
+    b: Math.round(b * 0.22),
+  };
+}
+
+function drawBrow(ctx, x1, x2, centerY, thickness, archFactor, color) {
+  const bw = x2 - x1;
+  const peakX = x1 + bw * 0.62;
+  const peakY = centerY - thickness * archFactor;
+  const { r, g, b } = color;
+
+  const makePath = () => {
+    ctx.beginPath();
+    // Top edge: head → arch peak → tail
+    ctx.moveTo(x1, centerY - thickness * 0.5);
+    ctx.bezierCurveTo(
+      x1 + bw * 0.28, centerY - thickness * archFactor * 0.75,
+      peakX - bw * 0.06, peakY,
+      x2, centerY - thickness * 0.2
+    );
+    // Bottom edge: tail → back to head
+    ctx.bezierCurveTo(
+      peakX + bw * 0.04, peakY + thickness * 1.4,
+      x1 + bw * 0.26, centerY + thickness * 0.55,
+      x1, centerY + thickness * 0.5
+    );
+    ctx.closePath();
+  };
+
+  // Clip strictly to the brow bounding box
+  const pad = thickness * 1.2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x1 - pad, centerY - thickness * 3 - pad, bw + pad * 2, thickness * 4 + pad * 2);
+  ctx.clip();
+
+  // Layer 1: outer soft glow
+  ctx.filter = `blur(${Math.round(thickness * 1.1)}px)`;
+  ctx.fillStyle = `rgba(${r},${g},${b},0.45)`;
+  makePath(); ctx.fill();
+
+  // Layer 2: main body
+  ctx.filter = `blur(${Math.round(thickness * 0.38)}px)`;
+  ctx.fillStyle = `rgba(${r},${g},${b},0.82)`;
+  makePath(); ctx.fill();
+
+  // Layer 3: crisp center (no blur)
+  ctx.filter = "none";
+  ctx.fillStyle = `rgba(${r},${g},${b},0.48)`;
+  makePath(); ctx.fill();
+
+  ctx.restore();
+}
+
+function getArchFactor(recommendation) {
+  const style = (recommendation?.recommendedStyle || "").toLowerCase();
+  if (style.includes("high") || style.includes("ארוך") || style.includes("קשת")) return 2.4;
+  if (style.includes("straight") || style.includes("ישר")) return 0.5;
+  if (style.includes("soft") || style.includes("רך") || style.includes("natural") || style.includes("טבעי")) return 1.4;
+  if (style.includes("bold") || style.includes("עבה") || style.includes("thick")) return 1.7;
+  return 1.6;
+}
+
+function applyEyebrowStyle(imageBase64, recommendation) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+
+      const W = canvas.width;
+      const H = canvas.height;
+
+      const color = sampleBrowColor(ctx, W, H);
+      const archFactor = getArchFactor(recommendation);
+
+      // Brows at 34% height (calibrated to face guide oval)
+      const browCenterY = H * 0.34;
+      const browThickness = H * 0.027;
+
+      // Left brow: 13%–37% width, Right brow: 63%–87%
+      drawBrow(ctx, W * 0.13, W * 0.37, browCenterY, browThickness, archFactor, color);
+      drawBrow(ctx, W * 0.63, W * 0.87, browCenterY, browThickness, archFactor, color);
+
+      resolve(canvas.toDataURL("image/jpeg", 0.92));
+    };
+    img.onerror = () => reject(new Error("Image load failed"));
+    img.src = `data:image/jpeg;base64,${imageBase64}`;
+  });
+}
+
 // Fixed oval mask covering the eye+brow area (calibrated to face guide oval)
 function createEyeMask(imageBase64) {
   return new Promise((resolve) => {
@@ -343,6 +452,18 @@ export default function EyebrowAgent() {
   };
 
   // ── Generation ───────────────────────────────────────────────────────────
+  const generateWithCanvas = async () => {
+    setStep(STEPS.GENERATING); setError(null);
+    try {
+      const resultDataUrl = await applyEyebrowStyle(imageBase64, recommendation);
+      setResultImage(resultDataUrl);
+      setStep(STEPS.RESULT);
+    } catch (err) {
+      setError(err.message || t.errorGenerate);
+      setStep(STEPS.RECOMMENDATION);
+    }
+  };
+
   const generateWithFal = async () => {
     setStep(STEPS.GENERATING); setError(null);
     try {
@@ -571,7 +692,7 @@ export default function EyebrowAgent() {
                 ))}
               </div>
 
-              <button onClick={generateWithFal} style={btnPrimary}>{t.generateBtn}</button>
+              <button onClick={generateWithCanvas} style={btnPrimary}>{t.generateBtn}</button>
               <button onClick={() => alert(t.consultAlert)} style={btnSecondary}>{t.bookBtn}</button>
             </div>
           )}
