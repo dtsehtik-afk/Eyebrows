@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 // MediaPipe eyebrow landmark indices (468-point model)
-const RIGHT_BROW_IDX = [46, 53, 52, 65, 55, 70, 63, 105, 66, 107]; // person's right = image left
-const LEFT_BROW_IDX  = [276, 283, 282, 295, 285, 300, 293, 334, 296, 336]; // person's left = image right
+const RIGHT_BROW_IDX = [46, 53, 52, 65, 55, 70, 63, 105, 66, 107];
+const LEFT_BROW_IDX  = [276, 283, 282, 295, 285, 300, 293, 334, 296, 336];
 
 let _landmarker = null;
 let _landmarkerLoading = null;
@@ -12,6 +11,8 @@ async function getFaceLandmarker() {
   if (_landmarker) return _landmarker;
   if (_landmarkerLoading) return _landmarkerLoading;
   _landmarkerLoading = (async () => {
+    const { FaceLandmarker, FilesetResolver } = window;
+    if (!FaceLandmarker || !FilesetResolver) throw new Error("MediaPipe not loaded");
     const vision = await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
     );
