@@ -870,7 +870,7 @@ export default function EyebrowAgent() {
               </div>
 
               <button onClick={() => setStep(STEPS.LEAD)} style={btnPrimary}>{t.generateBtn}</button>
-              <button onClick={() => alert(t.consultAlert)} style={btnSecondary}>{t.bookBtn}</button>
+              <button onClick={() => window.open("https://calendly.com/alinatsehtik1234/30min", "_blank")} style={btnSecondary}>{t.bookBtn}</button>
             </div>
           )}
 
@@ -955,7 +955,7 @@ export default function EyebrowAgent() {
                 <p style={{ color: "#9a7088", fontSize: "13px", margin: 0 }}>{t.loveItSub}</p>
               </div>
 
-              <button onClick={() => alert(t.bookAlert)} style={btnPrimary}>{t.bookNow}</button>
+              <button onClick={() => window.open("https://calendly.com/alinatsehtik1234/30min", "_blank")} style={btnPrimary}>{t.bookNow}</button>
               <button onClick={shareResult} style={btnSecondary}>{t.shareBtn}</button>
               <button onClick={reset} style={btnGhost}>{t.tryAnother}</button>
             </div>
