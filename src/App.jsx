@@ -266,6 +266,62 @@ const T = {
     errorGenerate: "Error generating simulation. Please try again.",
     cameraError: "Cannot access camera. Please check permissions.",
   },
+  ru: {
+    title: "Умный советник по бровям",
+    subtitle: "Загрузите фото и получите персональную рекомендацию",
+    langToggle: "עברית",
+    steps: ["Загрузка", "Анализ", "Результат", "Симуляция"],
+    uploadTitle: "Как вы хотите добавить фото?",
+    uploadBtn: "📁 Загрузить из галереи",
+    cameraBtn: "📷 Сделать селфи сейчас",
+    uploadHint: "Чёткое селфи — так мы дадим самую точную рекомендацию",
+    captureBtn: "📸 Снять",
+    retakeBtn: "Назад",
+    positionHint: "Расположите лицо в рамке",
+    positionDrag: "Перетащите  •  Сведите пальцы для зума",
+    confirmBtn: "✓ Подтвердить и анализировать",
+    analyzeBtn: "Анализировать мои брови ✨",
+    changeBtn: "Изменить фото",
+    analyzingTitle: "Анализируем ваше лицо...",
+    analyzingSubtitle: "Это займёт несколько секунд",
+    faceShape: "Форма лица",
+    technique: "Рекомендуемая техника",
+    recommendedTitle: "🎨 Рекомендуемый стиль:",
+    colorLabel: "Рекомендуемый оттенок:",
+    tipsTitle: "💡 Личные советы:",
+    generateBtn: "🪄 Создать симуляцию!",
+    bookBtn: "📅 Записаться на бесплатную консультацию",
+    generatingTitle: "Создаём симуляцию...",
+    generatingSubtitle: "Создаём идеальные брови для вас ✨",
+    before: "До",
+    after: "После ✨",
+    loveIt: "Нравится результат? 😍",
+    loveItSub: "Эти брови ждут вас у нас",
+    bookNow: "📅 Хочу записаться!",
+    tryAnother: "Попробовать с другим фото",
+    privacy: "Ваше фото не сохраняется и используется только для анализа 🔒",
+    bookAlert: "Отлично! Наш специалист свяжется с вами в ближайшее время 💕",
+    consultAlert: "Запрос на консультацию отправлен! Мы скоро свяжемся 💕",
+    leadTitle: "Почти готово! 🎉",
+    leadSubtitle: "Оставьте данные и мы свяжемся для записи",
+    leadName: "Полное имя",
+    leadPhone: "Телефон",
+    leadBtn: "🪄 Создать симуляцию!",
+    leadSkip: "Пропустить",
+    shareBtn: "📤 Поделиться результатом",
+    closeLightbox: "✕",
+    sendOtpBtn: "Отправить код подтверждения в WhatsApp",
+    otpSent: "Код отправлен в ваш WhatsApp!",
+    otpPlaceholder: "Введите 6-значный код",
+    otpVerifyBtn: "Подтвердить ✓",
+    otpResend: "Отправить снова",
+    otpExpired: "Код истёк, отправьте снова",
+    otpInvalid: "Неверный код, попробуйте снова",
+    otpError: "Ошибка отправки, попробуйте снова",
+    errorAnalyze: "Ошибка анализа изображения. Попробуйте снова.",
+    errorGenerate: "Ошибка создания симуляции. Попробуйте снова.",
+    cameraError: "Нет доступа к камере. Проверьте разрешения.",
+  },
 };
 
 const STEPS = {
@@ -332,6 +388,8 @@ export default function EyebrowAgent() {
 
   const t = T[lang];
   const dir = lang === "he" ? "rtl" : "ltr";
+  const nextLang = lang === "he" ? "en" : lang === "en" ? "ru" : "he";
+  const nextLangLabel = lang === "he" ? "EN" : lang === "en" ? "RU" : "עב";
 
   useEffect(() => () => stopCamera(), []);
 
@@ -566,9 +624,10 @@ export default function EyebrowAgent() {
         setError(data.error === "expired" ? t.otpExpired : t.otpInvalid);
         return;
       }
-      // Verified — save lead and generate
-      fetch("https://script.google.com/macros/s/AKfycbwy5TpwXtWXNzaPTO4SJd9r8-qghbvMNksjAckl6EjnQBj1bs10Lvg1EZ1bc7MIBfN-Lg/exec", {
+      // Verified — save lead, send WhatsApp welcome, and generate
+      fetch("/api/lead", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: leadName.trim(), phone: leadPhone.trim() }),
       }).catch(() => {});
       generateWithGemini();
@@ -697,9 +756,9 @@ export default function EyebrowAgent() {
 
         {/* Lang toggle */}
         <div style={{ display: "flex", justifyContent: dir === "rtl" ? "flex-start" : "flex-end", marginBottom: "12px" }}>
-          <button onClick={() => setLang(l => l === "he" ? "en" : "he")}
+          <button onClick={() => setLang(nextLang)}
             style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "20px", color: "#e8a0c8", fontSize: "13px", padding: "6px 16px", cursor: "pointer" }}>
-            {t.langToggle}
+            {nextLangLabel}
           </button>
         </div>
 
@@ -756,17 +815,26 @@ export default function EyebrowAgent() {
             <div style={{ textAlign: "center" }}>
               {flashVisible && <div style={{ position: "fixed", inset: 0, background: "white", zIndex: 9999, pointerEvents: "none", opacity: 0.95 }} />}
               <canvas ref={canvasRef} style={{ display: "none" }} />
-              <div style={{ position: "relative", marginBottom: "16px" }}>
+              <div style={{ position: "relative", marginBottom: "12px" }}>
                 <video ref={videoRef} autoPlay playsInline muted
-                  style={{ width: "100%", borderRadius: "12px", maxHeight: "380px", objectFit: "cover", transform: "scaleX(-1)", display: "block" }} />
+                  style={{ width: "100%", borderRadius: "12px", maxHeight: "55vh", objectFit: "cover", transform: "scaleX(-1)", display: "block" }} />
                 {/* Oval guide on camera */}
                 <div style={{ position: "absolute", inset: 0 }}>
                   <FaceOvalGuide />
                 </div>
+                {/* Capture button overlaid on video */}
+                <div style={{ position: "absolute", bottom: "14px", left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", padding: "0 16px" }}>
+                  <button onClick={capturePhoto}
+                    style={{ ...btnPrimary, marginBottom: 0, width: "auto", padding: "12px 36px", opacity: 0.92 }}>
+                    {t.captureBtn}
+                  </button>
+                  <button onClick={() => { stopCamera(); setStep(STEPS.UPLOAD); }}
+                    style={{ ...btnGhost, marginBottom: 0, width: "auto", padding: "8px 24px", fontSize: "12px", opacity: 0.85 }}>
+                    {t.retakeBtn}
+                  </button>
+                </div>
               </div>
-              <p style={{ color: "#9a7088", fontSize: "12px", margin: "0 0 14px" }}>{t.positionHint}</p>
-              <button onClick={capturePhoto} style={btnPrimary}>{t.captureBtn}</button>
-              <button onClick={() => { stopCamera(); setStep(STEPS.UPLOAD); }} style={btnGhost}>{t.retakeBtn}</button>
+              <p style={{ color: "#9a7088", fontSize: "12px", margin: "0 0 8px" }}>{t.positionHint}</p>
             </div>
           )}
 
