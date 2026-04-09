@@ -192,6 +192,7 @@ const T = {
     consultAlert: "נשלחה בקשה לתיאום ייעוץ! נחזור אלייך בקרוב 💕",
     leadTitle: "כמעט שם! 🎉",
     leadSubtitle: "השאירי פרטים וניצור איתך קשר לקביעת תור",
+    noSpam: "🔒 לא שולחים פרסומות — רק הודעת ברוכה הבאה חד פעמית",
     leadName: "שם מלא",
     leadPhone: "טלפון",
     leadBtn: "🪄 צרי לי הדמיה!",
@@ -248,6 +249,7 @@ const T = {
     consultAlert: "Consultation request sent! We'll be in touch soon 💕",
     leadTitle: "Almost there! 🎉",
     leadSubtitle: "Leave your details and we'll reach out to book a session",
+    noSpam: "🔒 No spam — only a one-time welcome message",
     leadName: "Full name",
     leadPhone: "Phone",
     leadBtn: "🪄 Generate My Simulation!",
@@ -304,6 +306,7 @@ const T = {
     consultAlert: "Запрос на консультацию отправлен! Мы скоро свяжемся 💕",
     leadTitle: "Почти готово! 🎉",
     leadSubtitle: "Оставьте данные и мы свяжемся для записи",
+    noSpam: "🔒 Без спама — только одно приветственное сообщение",
     leadName: "Полное имя",
     leadPhone: "Телефон",
     leadBtn: "🪄 Создать симуляцию!",
@@ -628,7 +631,7 @@ export default function EyebrowAgent() {
       fetch("/api/lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: leadName.trim(), phone: leadPhone.trim() }),
+        body: JSON.stringify({ name: leadName.trim(), phone: leadPhone.trim(), lang }),
       }).catch(() => {});
       generateWithGemini();
     } catch {
@@ -750,47 +753,53 @@ export default function EyebrowAgent() {
   const btnSecondary = { width: "100%", padding: "13px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(200,100,160,0.25)", borderRadius: "12px", color: "#e8a0c8", fontSize: "14px", fontWeight: "600", cursor: "pointer", marginBottom: "10px", display: "block" };
   const btnGhost = { width: "100%", padding: "12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", color: "#c4a0b8", fontSize: "13px", cursor: "pointer", display: "block" };
 
+  const isCamera = step === STEPS.CAMERA;
+
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#1a0a0f 0%,#2d1020 50%,#1a0a0f 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", fontFamily: "'Segoe UI',Arial,sans-serif" }} dir={dir}>
+    <div style={{ minHeight: "100dvh", background: "linear-gradient(135deg,#1a0a0f 0%,#2d1020 50%,#1a0a0f 100%)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: isCamera ? "10px 12px" : "12px 16px", fontFamily: "'Segoe UI',Arial,sans-serif", boxSizing: "border-box" }} dir={dir}>
       <div style={{ width: "100%", maxWidth: "500px" }}>
 
         {/* Lang toggle */}
-        <div style={{ display: "flex", justifyContent: dir === "rtl" ? "flex-start" : "flex-end", marginBottom: "12px" }}>
+        <div style={{ display: "flex", justifyContent: dir === "rtl" ? "flex-start" : "flex-end", marginBottom: "8px" }}>
           <button onClick={() => setLang(nextLang)}
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "20px", color: "#e8a0c8", fontSize: "13px", padding: "6px 16px", cursor: "pointer" }}>
+            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "20px", color: "#e8a0c8", fontSize: "13px", padding: "5px 14px", cursor: "pointer" }}>
             {nextLangLabel}
           </button>
         </div>
 
-        {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <div style={{ fontSize: "40px", marginBottom: "8px" }}>✨</div>
-          <h1 style={{ color: "#f0d4e8", fontSize: "26px", fontWeight: "700", margin: "0 0 8px" }}>{t.title}</h1>
-          <p style={{ color: "#c4a0b8", fontSize: "14px", margin: 0 }}>{t.subtitle}</p>
-        </div>
+        {/* Header — hidden in camera mode */}
+        {!isCamera && (
+          <div style={{ textAlign: "center", marginBottom: "12px" }}>
+            <div style={{ fontSize: "30px", marginBottom: "4px" }}>✨</div>
+            <h1 style={{ color: "#f0d4e8", fontSize: "22px", fontWeight: "700", margin: "0 0 4px" }}>{t.title}</h1>
+            <p style={{ color: "#c4a0b8", fontSize: "13px", margin: 0 }}>{t.subtitle}</p>
+          </div>
+        )}
 
-        {/* Progress */}
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "4px", marginBottom: "24px" }}>
-          {t.steps.map((label, i) => {
-            const active = i <= progressIndex;
-            return (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
-                  <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: active ? "linear-gradient(135deg,#e8a0c8,#c060a0)" : "#3d1a2e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", color: active ? "white" : "#7a5068", fontWeight: "700" }}>
-                    {active && i < progressIndex ? "✓" : i + 1}
+        {/* Progress — hidden in camera mode */}
+        {!isCamera && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "4px", marginBottom: "12px" }}>
+            {t.steps.map((label, i) => {
+              const active = i <= progressIndex;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                    <div style={{ width: "26px", height: "26px", borderRadius: "50%", background: active ? "linear-gradient(135deg,#e8a0c8,#c060a0)" : "#3d1a2e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", color: active ? "white" : "#7a5068", fontWeight: "700" }}>
+                      {active && i < progressIndex ? "✓" : i + 1}
+                    </div>
+                    <span style={{ fontSize: "10px", color: active ? "#f0d4e8" : "#7a5068", whiteSpace: "nowrap" }}>{label}</span>
                   </div>
-                  <span style={{ fontSize: "10px", color: active ? "#f0d4e8" : "#7a5068", whiteSpace: "nowrap" }}>{label}</span>
+                  {i < t.steps.length - 1 && (
+                    <div style={{ width: "22px", height: "2px", background: i < progressIndex ? "#c060a0" : "#3d1a2e", marginBottom: "14px", borderRadius: "1px" }} />
+                  )}
                 </div>
-                {i < t.steps.length - 1 && (
-                  <div style={{ width: "24px", height: "2px", background: i < progressIndex ? "#c060a0" : "#3d1a2e", marginBottom: "14px", borderRadius: "1px" }} />
-                )}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Card */}
-        <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: "20px", border: "1px solid rgba(200,100,160,0.2)", padding: "28px", backdropFilter: "blur(10px)" }}>
+        <div style={{ background: isCamera ? "transparent" : "rgba(255,255,255,0.04)", borderRadius: "20px", border: isCamera ? "none" : "1px solid rgba(200,100,160,0.2)", padding: isCamera ? "0" : "20px", backdropFilter: isCamera ? "none" : "blur(10px)" }}>
 
           {error && (
             <div style={{ background: "rgba(255,80,80,0.1)", border: "1px solid rgba(255,80,80,0.3)", borderRadius: "10px", padding: "12px", marginBottom: "16px", color: "#ff9090", fontSize: "14px", textAlign: "center" }}>
@@ -815,26 +824,16 @@ export default function EyebrowAgent() {
             <div style={{ textAlign: "center" }}>
               {flashVisible && <div style={{ position: "fixed", inset: 0, background: "white", zIndex: 9999, pointerEvents: "none", opacity: 0.95 }} />}
               <canvas ref={canvasRef} style={{ display: "none" }} />
-              <div style={{ position: "relative", marginBottom: "12px" }}>
+              <div style={{ position: "relative", marginBottom: "10px" }}>
                 <video ref={videoRef} autoPlay playsInline muted
-                  style={{ width: "100%", borderRadius: "12px", maxHeight: "55vh", objectFit: "cover", transform: "scaleX(-1)", display: "block" }} />
-                {/* Oval guide on camera */}
+                  style={{ width: "100%", borderRadius: "12px", height: "calc(100dvh - 130px)", objectFit: "cover", transform: "scaleX(-1)", display: "block" }} />
                 <div style={{ position: "absolute", inset: 0 }}>
                   <FaceOvalGuide />
                 </div>
-                {/* Capture button overlaid on video */}
-                <div style={{ position: "absolute", bottom: "14px", left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", padding: "0 16px" }}>
-                  <button onClick={capturePhoto}
-                    style={{ ...btnPrimary, marginBottom: 0, width: "auto", padding: "12px 36px", opacity: 0.92 }}>
-                    {t.captureBtn}
-                  </button>
-                  <button onClick={() => { stopCamera(); setStep(STEPS.UPLOAD); }}
-                    style={{ ...btnGhost, marginBottom: 0, width: "auto", padding: "8px 24px", fontSize: "12px", opacity: 0.85 }}>
-                    {t.retakeBtn}
-                  </button>
-                </div>
               </div>
               <p style={{ color: "#9a7088", fontSize: "12px", margin: "0 0 8px" }}>{t.positionHint}</p>
+              <button onClick={capturePhoto} style={btnPrimary}>{t.captureBtn}</button>
+              <button onClick={() => { stopCamera(); setStep(STEPS.UPLOAD); }} style={btnGhost}>{t.retakeBtn}</button>
             </div>
           )}
 
@@ -966,6 +965,7 @@ export default function EyebrowAgent() {
                   style={{ width: "100%", padding: "14px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(200,100,160,0.3)", borderRadius: "12px", color: "#f0d4e8", fontSize: "15px", outline: "none", boxSizing: "border-box", direction: "ltr" }}
                 />
               </div>
+              <p style={{ color: "#5a4060", fontSize: "12px", textAlign: "center", margin: "0 0 14px" }}>{t.noSpam}</p>
               {!otpSent ? (
                 <button onClick={sendOtp} style={btnPrimary}>{t.sendOtpBtn}</button>
               ) : (

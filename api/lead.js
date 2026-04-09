@@ -1,7 +1,15 @@
 export const config = { runtime: "edge" };
 
-async function generateWelcomeMessage(name) {
+const LANG_INSTRUCTION = {
+  he: "כתבי את ההודעה בעברית",
+  en: "Write the message in English",
+  ru: "Напишите сообщение на русском языке",
+};
+
+async function generateWelcomeMessage(name, lang = "he") {
   const apiKey = process.env.GEMINI_API_KEY;
+  const langInstruction = LANG_INSTRUCTION[lang] || LANG_INSTRUCTION.he;
+
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
     {
@@ -10,15 +18,15 @@ async function generateWelcomeMessage(name) {
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `אתה עוזר לאלינה, מומחית לגבות. כתבי הודעת ווצאפ קצרה ואישית בעברית ללקוחה בשם ${name} שזה עתה התנסתה בסוכן ייעוץ הגבות שלה.
-ההודעה צריכה:
-- להיות חמה, אישית ולא מעוצבת כמו תבנית
-- להזכיר את הניסיון שלה עם הסוכן
+            text: `את אלינה צכטיק, אמנית עיצוב גבות ומיקרובליידינג. נכנס לך ליד חדש בשם ${name} שהתנסתה בסוכן הגבות הדיגיטלי שלך.
+שלחי לה הודעת ווצאפ קצרה, נעימה ומפתה. ההודעה צריכה:
+- להיות חמה ואישית, לא תבנית מעוצבת
 - להזמין אותה לקבוע ייעוץ חינם דרך הקישור: https://calendly.com/alinatsehtik1234/30min
-- להיות עד 100 מילים
-- לא לכלול כותרות או תבניות, רק טקסט טבעי
+- להיות עד 80 מילים
+- לא לכלול כותרות, רק טקסט טבעי
+${langInstruction}.
 
-כתבי רק את ההודעה עצמה, ללא הסברים.`
+כתבי רק את ההודעה עצמה.`
           }]
         }]
       }),
@@ -48,7 +56,7 @@ export default async function handler(req) {
 
   try {
     const body = await req.json();
-    const { name, phone } = body;
+    const { name, phone, lang } = body;
 
     // Save to Google Sheets
     const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK;
@@ -62,7 +70,7 @@ export default async function handler(req) {
 
     // Send personalized WhatsApp welcome message
     if (name && phone) {
-      const message = await generateWelcomeMessage(name);
+      const message = await generateWelcomeMessage(name, lang);
       await sendWhatsApp(phone, message).catch(() => {});
     }
 
