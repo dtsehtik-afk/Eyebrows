@@ -1,19 +1,16 @@
 export const config = { runtime: "edge" };
 
 async function generateWelcomeMessage(name) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
-      messages: [{
-        role: "user",
-        content: `אתה עוזר לאלינה, מומחית לגבות. כתבי הודעת ווצאפ קצרה ואישית בעברית ללקוחה בשם ${name} שזה עתה התנסתה בסוכן ייעוץ הגבות שלה.
+  const apiKey = process.env.GEMINI_API_KEY;
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `אתה עוזר לאלינה, מומחית לגבות. כתבי הודעת ווצאפ קצרה ואישית בעברית ללקוחה בשם ${name} שזה עתה התנסתה בסוכן ייעוץ הגבות שלה.
 ההודעה צריכה:
 - להיות חמה, אישית ולא מעוצבת כמו תבנית
 - להזכיר את הניסיון שלה עם הסוכן
@@ -21,12 +18,14 @@ async function generateWelcomeMessage(name) {
 - להיות עד 100 מילים
 - לא לכלול כותרות או תבניות, רק טקסט טבעי
 
-כתבי רק את ההודעה עצמה, ללא הסברים.`,
-      }],
-    }),
-  });
+כתבי רק את ההודעה עצמה, ללא הסברים.`
+          }]
+        }]
+      }),
+    }
+  );
   const data = await res.json();
-  return data.content[0].text;
+  return data.candidates[0].content.parts[0].text;
 }
 
 async function sendWhatsApp(phone, message) {
