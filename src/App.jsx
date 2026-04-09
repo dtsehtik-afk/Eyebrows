@@ -199,6 +199,7 @@ const T = {
     leadSkip: "דלגי",
     shareBtn: "📤 שתפי את התוצאה",
     closeLightbox: "✕",
+    limitReached: "הגעת למגבלת 3 הדמיות. צרי קשר איתנו לאיפוס.",
     sendOtpBtn: "שלחי קוד אימות בווצאפ",
     otpSent: "קוד נשלח לווצאפ שלך!",
     otpPlaceholder: "הכניסי את הקוד בן 6 ספרות",
@@ -256,6 +257,7 @@ const T = {
     leadSkip: "Skip",
     shareBtn: "📤 Share Result",
     closeLightbox: "✕",
+    limitReached: "You've reached the 3-simulation limit. Contact us to reset.",
     sendOtpBtn: "Send WhatsApp Verification Code",
     otpSent: "Code sent to your WhatsApp!",
     otpPlaceholder: "Enter 6-digit code",
@@ -313,6 +315,7 @@ const T = {
     leadSkip: "Пропустить",
     shareBtn: "📤 Поделиться результатом",
     closeLightbox: "✕",
+    limitReached: "Вы достигли лимита 3 симуляций. Свяжитесь с нами для сброса.",
     sendOtpBtn: "Отправить код подтверждения в WhatsApp",
     otpSent: "Код отправлен в ваш WhatsApp!",
     otpPlaceholder: "Введите 6-значный код",
@@ -627,6 +630,20 @@ export default function EyebrowAgent() {
         setError(data.error === "expired" ? t.otpExpired : t.otpInvalid);
         return;
       }
+      // Check simulation limit
+      try {
+        const limitRes = await fetch("/api/check-limit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: leadPhone.trim() }),
+        });
+        const limitData = await limitRes.json();
+        if (limitData.blocked) {
+          setError(t.limitReached);
+          return;
+        }
+      } catch { /* allow through on error */ }
+
       // Verified — save lead, send WhatsApp welcome, and generate
       fetch("/api/lead", {
         method: "POST",
