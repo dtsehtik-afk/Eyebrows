@@ -555,10 +555,11 @@ export default function EyebrowAgent() {
     ctx.restore();
     const b64 = canvas.toDataURL("image/jpeg", 0.9).split(",")[1];
     const resized = await resizeImage(b64, 1024, 0.85);
+    const analyzeResized = await resizeImage(b64, 640, 0.8);
     setImageBase64(resized);
     // Update the display image to show the positioned version
     setImage(canvas.toDataURL("image/jpeg", 0.9));
-    analyzeWithGemini(resized);
+    analyzeWithGemini(analyzeResized);
   };
 
   // ── Analysis ─────────────────────────────────────────────────────────────

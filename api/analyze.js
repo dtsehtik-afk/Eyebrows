@@ -23,11 +23,15 @@ export default async function handler(req) {
       });
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           contents: [{
             parts: [
@@ -73,6 +77,7 @@ IMPORTANT for browBox: estimate the bounding box that covers BOTH eyebrows toget
       }
     );
 
+    clearTimeout(timeout);
     const geminiData = await response.json();
 
     if (!response.ok) {
