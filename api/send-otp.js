@@ -25,11 +25,12 @@ export default async function handler(req) {
 
   // Check instance is authorized before sending
   const stateRes = await fetch(`https://api.green-api.com/waInstance${instance}/getStateInstance/${apiToken}`);
-  if (stateRes.ok) {
-    const { stateInstance } = await stateRes.json();
-    if (stateInstance !== "authorized") {
-      return new Response(JSON.stringify({ ok: false, error: "whatsapp_disconnected", stateInstance }), { status: 503 });
-    }
+  if (!stateRes.ok) {
+    return new Response(JSON.stringify({ ok: false, error: "green_api_auth_failed", httpStatus: stateRes.status, instance }), { status: 500 });
+  }
+  const { stateInstance } = await stateRes.json();
+  if (stateInstance !== "authorized") {
+    return new Response(JSON.stringify({ ok: false, error: "whatsapp_disconnected", stateInstance }), { status: 503 });
   }
 
   // Format Israeli phone to WhatsApp chat ID
