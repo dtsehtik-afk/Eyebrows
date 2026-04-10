@@ -23,6 +23,15 @@ export default async function handler(req) {
   const instance = process.env.GREEN_API_INSTANCE;
   const apiToken = process.env.GREEN_API;
 
+  // Check instance is authorized before sending
+  const stateRes = await fetch(`https://api.green-api.com/waInstance${instance}/getStateInstance/${apiToken}`);
+  if (stateRes.ok) {
+    const { stateInstance } = await stateRes.json();
+    if (stateInstance !== "authorized") {
+      return new Response(JSON.stringify({ ok: false, error: "whatsapp_disconnected", stateInstance }), { status: 503 });
+    }
+  }
+
   // Format Israeli phone to WhatsApp chat ID
   const chatId = phone.replace(/\D/g, "").replace(/^0/, "972") + "@c.us";
 
@@ -39,7 +48,9 @@ export default async function handler(req) {
   );
 
   if (!res.ok) {
-    return new Response(JSON.stringify({ ok: false, error: "whatsapp send failed" }), { status: 500 });
+    let detail = "";
+    try { detail = await res.text(); } catch {}
+    return new Response(JSON.stringify({ ok: false, error: "whatsapp send failed", status: res.status, detail }), { status: 500 });
   }
 
   return new Response(JSON.stringify({ ok: true, token }), {

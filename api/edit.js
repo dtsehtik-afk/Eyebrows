@@ -11,7 +11,7 @@ export default async function handler(req) {
   const { imageBase64, prompt } = await req.json();
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -34,7 +34,9 @@ export default async function handler(req) {
     }
   );
 
-  const data = await response.json();
+  let data;
+  try { data = await response.json(); }
+  catch { return new Response(JSON.stringify({ error: `Gemini returned non-JSON (status ${response.status})` }), { status: 500, headers: { "Content-Type": "application/json" } }); }
 
   if (!response.ok) {
     return new Response(JSON.stringify({ error: data?.error?.message || JSON.stringify(data) }), {
